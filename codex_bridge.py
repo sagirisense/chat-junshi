@@ -88,6 +88,11 @@ def command():
             versions = root / 'fnm/node-versions'
             if versions.is_dir():
                 candidates.extend(sorted(versions.glob('*/installation/codex.cmd'), reverse=True))
+        # The desktop app installs its CLI in versioned directories outside PATH.
+        desktop_bin = roots[1] / 'OpenAI/Codex/bin'
+        if desktop_bin.is_dir():
+            candidates.extend(sorted(desktop_bin.glob('*/codex.exe'),
+                                     key=lambda path: path.stat().st_mtime, reverse=True))
         shim = next((str(path) for path in candidates if path.is_file()), None)
     if not shim:
         raise RuntimeError('未找到 Codex CLI，请安装并登录，或使用自定义 API')

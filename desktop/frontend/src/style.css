@@ -142,6 +142,35 @@ details{font-size:11px;color:var(--muted)}summary{display:flex;gap:6px;align-ite
 @media(max-width:900px){.conversation .panel-heading{flex-wrap:wrap;gap:10px}.conversation .panel-tools{margin-left:auto}}
 
 /* Use one complete field border and an inset focus ring to avoid clipped outlines. */
+.message-time{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:5px;overflow-wrap:anywhere}
+.assistance-tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:10px}.assistance-tabs>.button{flex:1;min-width:70px}
+.topic-title{font-size:14px;font-weight:600;margin:10px 0 4px}.topic-basis{font-size:11px;color:var(--muted);line-height:1.6}
+.topic-sources{display:grid;gap:6px;margin:8px 0 12px}.topic-sources a{font-size:11px;color:var(--accent);line-height:1.6;overflow-wrap:anywhere;text-decoration:underline}
+.chat-layout{grid-template-columns:minmax(260px,.7fr) minmax(400px,1.3fr)}
+.advice-controls{max-height:42%;overflow-y:auto;flex-shrink:0;padding-top:10px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.assistance-tabs{margin-bottom:5px}
+.settings-disclosure{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;padding:7px 0;background:none;border:0;color:var(--muted);font-size:12px;text-align:left;cursor:pointer}
+.settings-disclosure>span:last-child{display:flex;align-items:center;gap:4px;color:var(--accent)}
+.settings-disclosure[aria-expanded=true] svg{transform:rotate(180deg)}
+.settings-disclosure:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+.assistance-settings{padding:7px 0 10px}.assistance-settings[hidden]{display:none}
+.generation-actions{display:flex;align-items:center;gap:8px;margin-top:5px}
+.generation-actions>.generate-button{flex:1;width:auto;min-height:36px;margin:0;font-size:13px}
+.generation-actions>.button:not(.generate-button){width:auto;min-width:100px;font-size:12px}
+.advice-controls>.status-line{margin:5px 0 0;font-size:10px;line-height:1.5}
+.advice-controls>.clock-line{font-size:10px;opacity:.8}
+.advice-scroll{padding-top:14px;min-height:0}
+.judgment-compact{display:block;padding:10px 12px;margin-bottom:10px}
+.judgment-compact>summary{font-size:12px;gap:8px;color:var(--foreground)}
+.judgment-compact>summary>span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.judgment-compact>summary>svg{flex-shrink:0;color:var(--accent)}
+.judgment-body{padding:6px 0}.judgment-body p{font-size:11px}
+.nav-bar{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.nav-bar>.main-nav{flex:1;min-width:0;width:auto}
+.nav-bar>.nav-actions{flex-shrink:0;margin-left:0}
+@media(max-width:680px){.nav-bar{flex-wrap:wrap;gap:4px}.nav-bar>.nav-actions{margin-left:auto}}
+@media(max-width:900px) and (min-width:681px){.chat-layout{grid-template-columns:minmax(245px,.7fr) minmax(350px,1.3fr)}}
+@media(max-width:680px){.advice-controls{max-height:none}.generation-actions{flex-wrap:wrap}.advice-scroll{min-height:250px}}
 .model-settings .select{gap:8px}
 .model-settings .select__trigger,.model-settings .input{
  border:1px solid var(--field-border);border-radius:10px;background:var(--field-background);color:var(--foreground);box-shadow:none;outline:none;outline-offset:0;min-height:44px;padding:10px 12px;line-height:1.5;
@@ -150,3 +179,11 @@ details{font-size:11px;color:var(--muted)}summary{display:flex;gap:6px;align-ite
 .model-settings .select__trigger:focus-visible,.model-settings .select__trigger[data-focus-visible=true],.model-settings .input:focus,.model-settings .input[data-focused=true]{
  border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);outline:none;background:var(--field-background);
 }
+.small-dialog .input,.small-dialog .textarea{
+ box-sizing:border-box;outline:none;outline-offset:0;box-shadow:none;transition:border-color .15s,box-shadow .15s;
+}
+.small-dialog .input:focus,.small-dialog .input:focus-visible,.small-dialog .input[data-focused=true],.small-dialog .textarea:focus,.small-dialog .textarea:focus-visible,.small-dialog .textarea[data-focused=true]{
+ border-color:var(--focus);outline:none;outline-offset:0;box-shadow:inset 0 0 0 1px var(--focus);
+}
+.small-dialog .correction-field{display:flex;flex-direction:column;gap:7px}
+.small-dialog .correction-field+.correction-field{margin-top:14px}

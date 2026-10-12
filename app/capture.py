@@ -129,6 +129,7 @@ class Capture:
 
         self.settle, self.max_wait = settle, max_wait
         self.shape = self.area = self.last = self.pending = None
+        self.latest = None
         self.t = self.t0 = 0.0
         # 包装层默认 cursor_capture=True，会去调 SetIsCursorCaptureEnabled。
         # 这个属性要 Win10 2004（build 19041）才有，1909 及更早直接抛 CursorConfigUnsupported。
@@ -143,6 +144,7 @@ class Capture:
         full = np.ascontiguousarray(frame.frame_buffer[:, :, :3][:, :, ::-1])  # BGRA → RGB；缓冲区回调后就没了，必须拷
         if full.max() == 0:
             return
+        self.latest = full
         if self.area is None or full.shape != self.shape:
             self.shape, self.area = full.shape, chat_area(full)
         if self.area is None:
@@ -173,6 +175,10 @@ class Capture:
 
     def alive(self):
         return not self.ctl.is_finished()
+
+    def snapshot(self):
+        """Latest non-black frame for bounded retries on an otherwise static view."""
+        return self.latest
 
     def stop(self):
         self.ctl.stop()

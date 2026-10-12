@@ -10,6 +10,10 @@ import threading
 import time
 
 from codex_bridge import analyze, close_active_servers
+from quick_reply import TRANSPORT
+from message_times import clean_context, normalize_manual, infer_missing_times
+from assistance import request_instructions, attach_sources
+from topic_news import recent_news
 from collector import run
 from relationship_memory import RelationshipMemory
 from sessions import Session
@@ -32,6 +36,7 @@ class Service:
         self.sessions = {}
         self.current = None
         self.child = None
+        self.ocr_ready = False
         self.enabled = mp.Event()
         self.incoming = mp.Queue()
         self.lock = threading.RLock()
@@ -46,6 +51,10 @@ class Service:
         self.memory_notice = ''
         self.onboarded = False
         self.active_title = ''
+        self.reply_preview = []
+        self.reply_metrics = {}
+        self.reply_token = None
+        self.assistance_notice = ''
         self.restore_sessions()
 
     def restore_sessions(self):
@@ -93,10 +102,14 @@ class Service:
             self.memory_notice = '关系记忆暂不可用，采集仍可继续；请稍后重试记忆操作。'
         return {'title': self.current.title if self.current else '',
                 'active_title': self.active_title,
-                'messages': self.current.messages[-150:] if self.current else [],
+                'messages': infer_missing_times(self.current.messages)[-150:] if self.current else [],
                 'sessions': list(self.sessions), 'confirmed': bool(self.current and self.current.confirmed),
                 'capturing': self.enabled.is_set(), 'blocked': self.blocked, 'busy': self.busy,
                 'status': self.status, 'result': self.result, 'profile': self.profile,
+                'reply_preview': self.reply_preview if self.current and self.reply_token == (self.current.title, self.current.revision, self.epoch) else [],
+                'reply_metrics': self.reply_metrics,
+                'assistance_notice': self.assistance_notice,
+                'ocr_ready': self.ocr_ready,
                 'onboarded': self.onboarded, 'memory': status, 'memory_rows': rows,
                 'memory_notice': self.memory_notice}
 
@@ -133,6 +146,12 @@ class Service:
             row['subject_id'] == self.subject() and row['scope'] in ('object', 'relationship')
             for row in rows))
 
+    def ensure_collector(self):
+        if self.child is None or not self.child.is_alive():
+            self.ocr_ready = False
+            self.child = mp.Process(target=run, args=(self.incoming, self.enabled, True), daemon=True)
+            self.child.start()
+
     def stop(self):
         self.enabled.clear()
         if self.child:
@@ -140,6 +159,7 @@ class Service:
             self.child.join(timeout=3)
             self.child = None
         self.incoming = mp.Queue()
+        self.ocr_ready = False
         self.epoch += 1
 
     def apply_profile(self, profile, persist):
@@ -218,9 +238,7 @@ class Service:
                     self.enabled.clear()
                     self.status = '采集已暂停'
                 else:
-                    if self.child is None or not self.child.is_alive():
-                        self.child = mp.Process(target=run, args=(self.incoming, self.enabled), daemon=True)
-                        self.child.start()
+                    self.ensure_collector()
                     self.enabled.set()
                     self.status = '正在读取微信窗口，请核对会话与原文'
                 self.epoch += 1
@@ -236,13 +254,26 @@ class Service:
                 self.set_goal(payload.get('goal', ''))
             elif action == 'skip_onboarding':
                 self.onboarded = True
+            elif action == 'delete_message':
+                if not self.current or payload.get('title') != self.current.title:
+                    raise ValueError('会话已变化，请重新选择消息')
+                if payload.get('confirm') is not True:
+                    raise ValueError('请确认删除这条本地消息')
+                self.current.delete_message(payload.get('id'))
+                self.epoch += 1
+                self.result = None
+                self.reply_preview = []
+                self.status = '这条本地消息已删除，旧建议已失效'
             elif action == 'correct':
                 if not self.current:
                     raise ValueError('没有当前会话')
                 index = next((i for i, m in enumerate(self.current.messages) if m['id'] == payload['id']), None)
                 if index is None:
                     raise ValueError('消息已不存在')
-                self.current.correct(index, payload['sender'], payload['text'])
+                if payload.get('time_edit'):
+                    self.current.correct(index, payload['sender'], payload['text'], payload.get('message_time'))
+                else:
+                    self.current.correct(index, payload['sender'], payload['text'])
                 self.result = None
             elif action == 'packet':
                 if not self.current or self.blocked:
@@ -289,7 +320,10 @@ class Service:
                     if not isinstance(row, dict) or row.get('sender') not in ('me', 'peer') or not isinstance(row.get('text'), str) or not row['text'].strip() or len(row['text']) > 20000:
                         raise ValueError('聊天消息格式无效')
                     cleaned.append({'id': len(cleaned) + 1, 'sender': row['sender'], 'text': row['text'],
-                                    'message_time': row.get('message_time') if isinstance(row.get('message_time'), str) else None,
+                                    'message_time': normalize_manual(row.get('message_time')),
+                                    'message_time_source': 'import' if row.get('message_time') else None,
+                                    'time_context': clean_context(row.get('time_context')),
+                                    'time_inference_disabled': row.get('time_inference_disabled') is True,
                                     'observed_at': row.get('observed_at') if isinstance(row.get('observed_at'), str) else None})
                 if action == 'prepare_import_chat':
                     return {'title': title, 'count': len(cleaned), 'existing': title in self.sessions}
@@ -298,7 +332,9 @@ class Service:
                 self.stop()
                 session = self.sessions.get(title) or Session(title, self.root / 'data')
                 previous = list(session.messages)
-                session.messages = previous + [dict(row, id=len(previous) + index + 1) for index, row in enumerate(cleaned)]
+                first_id = max(session.next_message_id, max((row['id'] for row in previous), default=0) + 1)
+                session.messages = previous + [dict(row, id=first_id + index) for index, row in enumerate(cleaned)]
+                session.next_message_id = first_id + len(cleaned)
                 session.confirmed = False
                 session.revision += 1
                 session.save()
@@ -380,6 +416,12 @@ class Service:
                     'resume': '已恢复记忆', 'undo': '已撤销最近一次字段更新',
                     'forget': '已忘记当前对象', 'revoke': '已撤回同意，资料保留但不用于分析',
                     'delete_all': '已撤回同意并删除全部关系记忆'}[operation]
+            elif action == 'invalidate_assistance':
+                if payload.get('title') == (self.current.title if self.current else ''):
+                    self.epoch += 1
+                    self.result = None
+                    self.reply_preview = []
+                    self.assistance_notice = ''
             elif action == 'analyze':
                 if self.busy:
                     raise ValueError('正在分析，请稍候')
@@ -387,7 +429,12 @@ class Service:
                     raise ValueError('请先采集并核对单聊')
                 if 'goal' in payload:
                     self.set_goal(payload['goal'])
-                packet = self.current.packet(goal=self.profile.get('goal', ''))
+                task = payload.get('task', 'reply')
+                if task not in ('reply', 'polish', 'topics'):
+                    raise ValueError('不支持的辅助任务')
+                task_prompt = request_instructions(task, payload.get('draft', ''), payload.get('style', '自然一点'), payload.get('interests', ''))
+                limit = 80 if task == 'topics' else 30
+                packet = self.current.packet(limit=limit, goal=self.profile.get('goal', ''))
                 packet += '\n本轮回复目标优先用于选择话术；长期档案中的目标只作为关系背景。'
                 try:
                     context = self.memory.context(self.subject())
@@ -399,31 +446,70 @@ class Service:
                 if context:
                     packet += '\n宿主已经确认用户启用了本机关系记忆，无需再次询问同意；记忆读写全部由宿主负责。'
                     packet += '\n当前对象的精简长期记忆：\n' + json.dumps(context, ensure_ascii=False)
-                    packet += ('\n仅提出高价值的新 memory_updates：event 为原文支持的关键事件；'
-                               'hypothesis 为有证据、可纠正的暂定解释。引用本次消息 id。'
-                               '不把推测写成 event，不记录整份聊天，不代填MBTI评分，不调用记忆脚本；'
-                               '由宿主受控保存，没有变化返回空数组。')
+                    if task == 'reply':
+                        packet += ('\n仅提出高价值的新 memory_updates：event 为原文支持的关键事件；'
+                                   'hypothesis 为有证据、可纠正的暂定解释。引用本次消息 id。'
+                                   '不把推测写成 event，不记录整份聊天，不代填MBTI评分，不调用记忆脚本；'
+                                   '由宿主受控保存，没有变化返回空数组。')
+                packet += task_prompt
                 token = (self.current.title, self.current.revision, self.epoch)
-                evidence_ids = {m['id'] for m in self.current.messages[-30:]}
+                evidence_ids = {m['id'] for m in self.current.messages[-limit:]}
                 subject = self.subject()
                 self.busy = True
                 self.result = None
                 self.status = '军师正在阅读上下文…'
+                self.reply_preview = []
+                self.reply_metrics = {}
+                self.reply_token = token
+                self.assistance_notice = ''
                 threading.Thread(target=self.analyze_bg, args=(packet, token, subject, evidence_ids,
-                                 payload.get('model') or None, bool(context), payload.get('provider', 'codex'), dict(payload.get('api', {}))), daemon=True).start()
+                                 payload.get('model') or None, bool(context) and task == 'reply', payload.get('provider', 'codex'), dict(payload.get('api', {})), payload.get('mode', 'quick') if task == 'reply' else 'quick', task, task == 'topics' and payload.get('use_hotspots') is True), daemon=True).start()
             else:
                 raise ValueError('未知操作')
             self.notify()
             return self.snapshot()
 
-    def analyze_bg(self, packet, token, subject, evidence_ids, model, with_memory, provider='codex', api=None):
+    def analyze_bg(self, packet, token, subject, evidence_ids, model, with_memory, provider='codex', api=None, mode='deep', task='reply', use_hotspots=False):
+        started = time.monotonic()
+        def progress(stage, metrics, rows=None):
+            with self.lock:
+                if not self.current or token != (self.current.title, self.current.revision, self.epoch):
+                    return
+                self.status = stage
+                self.reply_metrics = metrics
+                if rows is not None:
+                    self.reply_preview = rows
+                self.notify()
         try:
-            result = analyze_api(packet, api or {}, model, with_memory) if provider == 'custom' else analyze(packet, model=model, with_memory=with_memory)
+            sources = []
+            if task == 'topics':
+                notice = '本次只根据历史和兴趣找话题，未联网检索热点。'
+                if use_hotspots:
+                    progress('正在获取近期资讯', {})
+                    sources, notice = recent_news()
+                with self.lock:
+                    if not self.current or token != (self.current.title, self.current.revision, self.epoch):
+                        raise ValueError('会话或上下文已变化，已停止生成')
+                    self.assistance_notice = notice
+                    self.notify()
+                packet += '\n宿主提供的近期资讯（可能没有适合对象的内容；无来源不得编造热点）：\n' + json.dumps(sources, ensure_ascii=False)
+            if provider == 'custom':
+                result = analyze_api(packet, api or {}, model, with_memory, quick=mode == 'quick', task=task)
+            elif mode == 'quick':
+                result = TRANSPORT.run(packet, model, with_memory, progress, task=task)
+            else:
+                result = analyze(packet, model=model, with_memory=with_memory)
+            if task == 'topics':
+                attach_sources(result, evidence_ids, sources)
+            if task != 'reply':
+                result['task'] = task
             error = None
         except Exception as exc:
             result, error = None, str(exc)
         with self.lock:
             self.busy = False
+            self.reply_preview = []
+            self.reply_metrics['total_s'] = round(time.monotonic() - started, 2)
             if not self.current or token != (self.current.title, self.current.revision, self.epoch):
                 self.status = '会话或上下文已变化，旧建议已丢弃，请重新分析'
             elif error:
@@ -459,7 +545,14 @@ class Service:
                 event = self.incoming.get(timeout=.2)
                 with self.lock:
                     kind = event[0]
-                    if kind == 'dead':
+                    if kind == 'ocr_ready':
+                        self.ocr_ready = True
+                        if not self.enabled.is_set():
+                            self.status = 'OCR 已准备好，打开微信单聊后开启采集'
+                    elif kind == 'dead' and not self.enabled.is_set():
+                        self.ocr_ready = False
+                        self.status = 'OCR 预热失败，开启采集时将重试'
+                    elif kind == 'dead':
                         self.enabled.clear()
                         self.blocked = True
                         self.epoch += 1
@@ -492,6 +585,7 @@ class Service:
 
     def serve(self):
         threading.Thread(target=self.capture_tick, daemon=True).start()
+        self.ensure_collector()
         try:
             for line in sys.stdin:
                 ident = None
