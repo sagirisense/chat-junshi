@@ -2,6 +2,8 @@ export const initialState = {
   title: '', active_title: '', messages: [], sessions: [], confirmed: false,
   capturing: false, blocked: false, busy: false, status: '正在连接本地采集服务…',
   result: null, profile: {}, memory: {}, memory_rows: [], memory_notice: '', onboarded: false,
+  reply_preview: [], reply_metrics: {},
+  assistance_notice: '',
 }
 
 export const goalOptions = ['自然接话', '继续了解对方', '主动邀约', '表达好感', '确认关系', '修复误会', '表达边界', '礼貌收尾', '先弄清局面']

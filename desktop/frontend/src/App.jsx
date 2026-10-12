@@ -9,9 +9,34 @@ const preview = new URLSearchParams(location.search).has('preview')
 const pages = [['chat', '回复工作台'], ['profile', '关系档案'], ['memory', '长期记忆']]
 const themeNames = { light: '浅色', dark: '深色', system: '跟随系统' }
 function savedTheme() { try { return localStorage.getItem('junshi-theme') || 'system' } catch { return 'system' } }
+function messageTimeLabel(message) {
+  if (message.message_time) {
+    const date = new Date(message.message_time)
+    if (!Number.isNaN(date.getTime())) return `${date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })} 北京时间 · ${message.message_time_source === 'user' ? '已手动核对' : '导入时间'}`
+  }
+  if (message.time_context) {
+    const date = new Date(message.time_context.anchor_time)
+    const display = Number.isNaN(date.getTime()) ? message.time_context.label : date.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', ...(message.time_context.precision === 'day' ? {} : { hour: '2-digit', minute: '2-digit', hour12: false }) })
+    return `${display} · ${message.time_context.precision === 'day' ? '日期标签' : '所属时间段'}（原标签：${message.time_context.label}），待核对`
+  }
+  if (message.inferred_time) {
+    const range = message.inferred_time
+    const format = value => new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    const display = range.earliest && range.latest ? `${format(range.earliest)} — ${format(range.latest)}` : range.earliest ? `${format(range.earliest)}之后` : `${format(range.latest)}之前`
+    return `约 ${display} · 前后时间推算，待核对`
+  }
+  return '发送时间未知'
+}
+function editTimeValue(message) {
+  if (!message.message_time) return ''
+  const date = new Date(message.message_time)
+  return Number.isNaN(date.getTime()) ? '' : new Date(date.getTime() + 8 * 3600000).toISOString().slice(0, 16)
+}
 
 export default function App() {
   const [state, setState] = useState(() => preview ? previewState() : initialState)
+  const [clock, setClock] = useState(() => new Date())
+  useEffect(() => { const timer = setInterval(() => setClock(new Date()), 30000); return () => clearInterval(timer) }, [])
   const stateRef = useRef(state)
   const [page, setPage] = useState('chat')
   const [profileOpen, setProfileOpen] = useState(false)
@@ -38,6 +63,15 @@ export default function App() {
     localStorage.setItem('junshi-api-source', apiSource); localStorage.setItem('junshi-api-url', baseUrl); localStorage.setItem('junshi-api-model', customModel)
   } catch {} }, [model, provider, baseUrl, customModel, apiSource])
   const [goal, setGoal] = useState(state.profile.goal || '')
+  const [assistanceMode, setAssistanceMode] = useState('reply')
+  const [settingsExpanded, setSettingsExpanded] = useState(false)
+  useEffect(() => { if (state.result && !state.busy) setSettingsExpanded(false) }, [state.busy, state.result?.task, state.result?.summary])
+  const [drafts, setDrafts] = useState({})
+  const [interestsByTitle, setInterestsByTitle] = useState({})
+  const [polishStyle, setPolishStyle] = useState('自然一点')
+  const [useHotspots, setUseHotspots] = useState(false)
+  const draft = drafts[state.title] || ''
+  const interests = interestsByTitle[state.title] || ''
   const [customGoal, setCustomGoal] = useState(() => !!state.profile.goal && !goalOptions.includes(state.profile.goal))
   const [theme, setTheme] = useState(savedTheme)
   const [systemDark, setSystemDark] = useState(() => matchMedia('(prefers-color-scheme: dark)').matches)
@@ -47,6 +81,7 @@ export default function App() {
   const [confirmation, setConfirmation] = useState(null)
   const toastTimer = useRef(null)
   const messagesRef = useRef(null)
+  const messageScrollRef = useRef({ title: null, lastId: 0, nearBottom: true })
   const activeMemory = state.memory.consent_enabled && !state.memory.paused
   const dark = theme === 'dark' || (theme === 'system' && systemDark)
 
@@ -100,8 +135,15 @@ export default function App() {
     try { localStorage.setItem('junshi-theme', theme) } catch {}
   }, [dark, theme])
   useEffect(() => {
-    if (messagesRef.current) messagesRef.current.scrollTop = messagesRef.current.scrollHeight
-  }, [state.title, state.messages.length])
+    const list = messagesRef.current
+    const previous = messageScrollRef.current
+    const lastId = state.messages.at(-1)?.id || 0
+    const switched = previous.title !== state.title
+    if (list && (switched || (lastId > previous.lastId && previous.nearBottom))) {
+      list.scrollTop = list.scrollHeight
+    }
+    messageScrollRef.current = { title: state.title, lastId, nearBottom: switched ? true : previous.nearBottom }
+  }, [state.title, state.messages.at(-1)?.id])
 
   function openProfile() { setImportedDraft(null); profileOpenRef.current = true; setProfileOpen(true) }
   function closeProfile() { profileOpenRef.current = false; setProfileOpen(false) }
@@ -170,10 +212,10 @@ export default function App() {
     return <section className="glass-panel conversation">
       <div className="panel-heading"><h2>最近对话</h2><div className="panel-tools"><Button variant="ghost" size="sm" onPress={() => importFile('chat')}><Upload size={14} />导入对话</Button><Button variant="ghost" size="sm" isIconOnly aria-label="导出聊天" isDisabled={!state.title} onPress={exportChat}><Download size={16} /></Button><Button variant="ghost" size="sm" isIconOnly aria-label="删除当前会话" className="danger-text" isDisabled={!state.title} onPress={clearChat}><Trash2 size={15} /></Button></div></div>
       <div className="contact-header"><div className="avatar contact-avatar">{(state.profile.peer_label || state.title || '聊').slice(0, 1)}</div><div className="contact-info"><Select className="session-select" aria-label="选择已保存会话" placeholder="选择一段对话" selectedKey={state.title || null} onSelectionChange={value => { if (value) call('select', { title: String(value) }) }}><Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger><Select.Popover placement="bottom start" className="styled-select-menu"><ListBox>{state.sessions.map(title => <ListBox.Item key={title} id={title} textValue={title}><Label>{title}</Label><ListBox.ItemIndicator /></ListBox.Item>)}</ListBox></Select.Popover></Select><span><i className={state.capturing && state.active_title === state.title ? 'status-dot live' : 'status-dot'} />{state.capturing && state.active_title === state.title ? '正在读取微信' : state.title ? '已保存会话' : '等待微信单聊'}</span></div><Button variant="ghost" size="sm" isIconOnly aria-label="编辑关系档案" onPress={openProfile}><Pencil size={15} /></Button></div>
-      <div className="messages" ref={messagesRef}>
+      <div className="messages" ref={messagesRef} onScroll={event => { const list = event.currentTarget; messageScrollRef.current.nearBottom = list.scrollHeight - list.scrollTop - list.clientHeight < 60 }}>
         {!state.messages.length ? <div className="empty-state"><MessageCircle size={38} /><h3>先听听，你们聊到哪里了</h3><p>打开微信单聊并保持未最小化，<br />开启采集后核对原文。</p><Button variant="secondary" onPress={() => call('capture')}><Play size={14} />{state.capturing ? '暂停采集' : '开启采集'}</Button></div> : <>
-          <p className="scope-note">屏幕采集文字，未显示的时间保持未知</p>
-          {state.messages.map(message => <div key={message.id} className={`message-row ${message.sender === 'me' ? 'mine' : ''}`}><div className="avatar message-avatar">{message.sender === 'me' ? '我' : (state.profile.peer_label || state.title).slice(0, 1)}</div><div className="message-content"><div className="message-meta"><span>{message.sender === 'me' ? '我' : '对方'}</span><span>#{message.id}</span><button aria-label={`纠正消息${message.id}`} onClick={() => setEdit({ ...message })}><Pencil size={12} /></button></div><div className="bubble">{message.text}</div></div></div>)}
+          <p className="scope-note">时间标签仅代表所属消息组；未识别的发送时间保持未知</p>
+          {state.messages.map(message => <div key={message.id} className={`message-row ${message.sender === 'me' ? 'mine' : ''}`}><div className="avatar message-avatar">{message.sender === 'me' ? '我' : (state.profile.peer_label || state.title).slice(0, 1)}</div><div className="message-content"><div className="message-meta"><span>{message.sender === 'me' ? '我' : '对方'}</span><span>#{message.id}</span><button aria-label={`纠正消息${message.id}的正文或时间`} onClick={() => setEdit({ ...message, message_time: editTimeValue(message), time_edit: false })}><Pencil size={12} /></button><button className="danger-text" aria-label={`删除消息${message.id}`} onClick={() => setConfirmation({ title: '删除这条消息？', text: '只删除本工具中的这一条记录，微信原文和关系记忆保留；相关旧建议会失效。', run: () => call('delete_message', { title: state.title, id: message.id, confirm: true }) })}><Trash2 size={12} /></button></div><div className="bubble">{message.text}</div><small className="message-time">{messageTimeLabel(message)}</small></div></div>)}
         </>}
       </div>
       <div className="conversation-footer"><label className="check-row"><input type="checkbox" checked={state.confirmed} disabled={!state.title || state.blocked} onChange={event => call('confirm', { confirmed: event.target.checked })} /><span>已核对说话人，当前为单聊</span><ShieldCheck size={15} /></label><div className="conversation-footer-line"><span>{state.messages.length} 条已采集</span><Button size="sm" variant="ghost" isDisabled={!state.confirmed} onPress={copyPacket}><Copy size={12} />复制 Skill 输入</Button></div></div>
@@ -181,10 +223,16 @@ export default function App() {
   }
 
   function advice() {
+    const resultMatches = !state.result || (state.result.task || 'reply') === assistanceMode
     return <section className="glass-panel advice">
       <div className="panel-heading"><h2><Sparkles size={21} className="accent-icon" />军师建议</h2><span className="model-caption">{chosenModel || (provider === 'custom' ? '自定义 API' : 'Codex 默认模型')}</span></div>
       <div className="advice-controls">
-        <div className="goal-picker">
+        <div className="assistance-tabs" role="group" aria-label="辅助功能">{[['reply', '回复建议'], ['polish', '润色草稿'], ['topics', '找话题']].map(([id, label]) => <Button key={id} size="sm" variant={assistanceMode === id ? 'secondary' : 'ghost'} aria-pressed={assistanceMode === id} isDisabled={state.busy} onPress={() => { setAssistanceMode(id); setSettingsExpanded(id !== 'reply'); call('invalidate_assistance', { title: state.title }) }}>{label}</Button>)}</div>
+        <button className="settings-disclosure" aria-expanded={settingsExpanded} aria-controls="assistance-settings" onClick={() => setSettingsExpanded(value => !value)}><span>{assistanceMode === 'reply' ? `回复目标：${goal || '自然接话'}` : assistanceMode === 'polish' ? '草稿与润色方向' : '兴趣与资讯设置'}</span><span>{settingsExpanded ? '收起' : '调整'}<ChevronDown size={14} /></span></button>
+        <div id="assistance-settings" className="assistance-settings" hidden={!settingsExpanded}>
+        {assistanceMode === 'polish' && <><TextField value={draft} isDisabled={state.busy} onChange={value => { setDrafts(previous => ({ ...previous, [state.title]: value })); call('invalidate_assistance', { title: state.title }) }}><Label>你想发送的话</Label><TextArea rows={3} maxLength={2000} placeholder="保留你的原意，帮你调整表达" /></TextField><Select aria-label="润色方向" selectedKey={polishStyle} isDisabled={state.busy} onSelectionChange={value => { setPolishStyle(String(value)); call('invalidate_assistance', { title: state.title }) }}><Label>润色方向</Label><Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger><Select.Popover><ListBox>{['自然一点', '简短一点', '温柔一点', '轻松一点', '表达边界'].map(value => <ListBox.Item key={value} id={value} textValue={value}><Label>{value}</Label><ListBox.ItemIndicator /></ListBox.Item>)}</ListBox></Select.Popover></Select></>}
+        {assistanceMode === 'topics' && <><TextField value={interests} isDisabled={state.busy} onChange={value => { setInterestsByTitle(previous => ({ ...previous, [state.title]: value })); call('invalidate_assistance', { title: state.title }) }}><Label>对方明确的兴趣（可选，仅本次使用）</Label><Input maxLength={200} placeholder="例如：喜欢摄影；只是提过某部电影" /></TextField><label className="check-row"><input type="checkbox" checked={useHotspots} disabled={state.busy} onChange={event => { setUseHotspots(event.target.checked); call('invalidate_assistance', { title: state.title }) }} /><span>结合近期科技、游戏与文化资讯</span></label><p className="status-line">只获取公开资讯，不向资讯源发送聊天或档案。</p></>}
+        {assistanceMode === 'reply' && <div className="goal-picker">
           <Select className="goal-select" placeholder="选择这次的回复目标" selectedKey={customGoal ? '__custom__' : goal || null} onSelectionChange={selected => {
             const value = String(selected || '')
             setCustomGoal(value === '__custom__')
@@ -201,13 +249,20 @@ export default function App() {
             <Label>你的具体目标</Label>
             <Input autoFocus placeholder="例如：轻松约对方周末喝咖啡" maxLength={200} />
           </TextField>}
+        </div>}
         </div>
-        <Button className="violet-button generate-button" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked} isPending={state.busy} onPress={() => call('analyze', { model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Sparkles size={18} />{state.busy ? '正在分析上下文…' : '生成回复建议'}</Button>
+        <div className="generation-actions">
+        <Button className="violet-button generate-button" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked || (assistanceMode === 'polish' && !draft.trim())} isPending={state.busy} onPress={() => call('analyze', { task: assistanceMode, draft, style: polishStyle, interests, use_hotspots: useHotspots, mode: 'quick', model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Sparkles size={18} />{state.busy ? '正在生成…' : assistanceMode === 'polish' ? '优化这段话' : assistanceMode === 'topics' ? '推荐话题' : '快速回复'}</Button>
+        {assistanceMode === 'reply' && <Button variant="ghost" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked} onPress={() => call('analyze', { mode: 'deep', model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Brain size={16} />深入分析</Button>}
+        </div>
         <p className="status-line" role="status">{state.status}</p>
+        {assistanceMode === 'topics' && state.assistance_notice && <p className="status-line">{state.assistance_notice}</p>}
+        <p className="status-line clock-line">北京时间：{clock.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}</p>
+        {!!state.reply_metrics?.total_s && <details className="status-line"><summary>本次用时 {state.reply_metrics.total_s} 秒</summary><p>连接准备：{state.reply_metrics.initialize_s ?? '—'} 秒 · 会话就绪：{state.reply_metrics.thread_ready_s ?? '—'} 秒 · 首条候选：{state.reply_metrics.first_candidate_s ?? '—'} 秒</p></details>}
       </div>
-      <div className="advice-scroll">{state.busy ? <div className="empty-state thinking"><Sparkles size={30} /><h3>先读原话，再给判断</h3><p>正在结合当前对话、档案和你的目标整理建议。</p></div> : !state.result ? <div className="empty-state"><Sparkles size={30} /><h3>不用急着想一句完美回复</h3><p>核对说话人后，你会得到几种自然的表达，<br />以及每一种表达的优点与代价。</p></div> : <>
-        <div className="judgment"><MessageCircle size={20} /><div><h3>{state.result.summary}</h3><p>{state.result.recommendation_reason}</p><details><summary>查看判断依据<ChevronRight size={12} /></summary>{[['事实', 'facts'], ['推测', 'hypotheses'], ['未知', 'unknowns']].map(([label, key]) => <div key={key}><b>{label}</b>{state.result[key].map((item, index) => <p key={index}>{item}</p>)}</div>)}</details></div></div>
-        {state.result.candidates.map((candidate, index) => <article key={index} className={`reply-card ${index === state.result.recommended_index ? 'recommended' : ''}`}><div className="reply-topline"><span className={index === state.result.recommended_index ? 'recommend-badge' : 'alternative-label'}>{index === state.result.recommended_index ? '推荐' : '另一种表达'}</span><Button variant="secondary" size="sm" isDisabled={!candidate.text} onPress={() => copy(candidate.text)}><Copy size={13} />复制</Button></div><p className="reply-text">{candidate.text || '建议暂时不回复'}</p><div className="tradeoffs"><div className="pro"><Check size={13} /><span><b>优点：</b>{candidate.pros.join('，')}</span></div><div className="con"><ShieldCheck size={13} /><span><b>代价：</b>{candidate.cons.join('，')}</span></div></div><details><summary>适用场景与后续<ChevronRight size={12} /></summary><p>{candidate.suitable_when}</p><p>{candidate.next_step}</p></details></article>)}
+      <div className="advice-scroll">{state.busy ? state.reply_preview?.length ? <><p className="status-line">候选预览，完整结果核对后可复制</p>{state.reply_preview.map((candidate, index) => <article className="reply-card" key={index}><p className="reply-text">{candidate.text || '建议暂时不回复'}</p></article>)}</> : <div className="empty-state thinking"><Sparkles size={30} /><h3>正在整理适合你的表达</h3><p>{state.status}</p></div> : !state.result || !resultMatches ? <div className="empty-state"><Sparkles size={30} /><h3>{assistanceMode === 'polish' ? '先写下你真正想说的话' : assistanceMode === 'topics' ? '从对方聊过的事，自然开个头' : '不用急着想一句完美回复'}</h3><p>{assistanceMode === 'polish' ? '保留草稿原意，结合当前关系和时间调整表达。' : assistanceMode === 'topics' ? '根据历史与兴趣找话题；资讯不合适时不硬凑热点。' : '核对说话人后，获取自然的表达和各自的优点与代价。'}</p></div> : <>
+        <details className="judgment judgment-compact"><summary><MessageCircle size={17} /><span>{state.result.summary}</span><ChevronDown size={14} /></summary><div className="judgment-body"><p>{state.result.recommendation_reason}</p>{[['事实', 'facts'], ['推测', 'hypotheses'], ['未知', 'unknowns']].map(([label, key]) => <div key={key}><b>{label}</b>{state.result[key].map((item, index) => <p key={index}>{item}</p>)}</div>)}</div></details>
+        {state.result.candidates.map((candidate, index) => <article key={index} className={`reply-card ${index === state.result.recommended_index ? 'recommended' : ''}`}><div className="reply-topline"><span className={index === state.result.recommended_index ? 'recommend-badge' : 'alternative-label'}>{index === state.result.recommended_index ? '推荐' : '另一种表达'}</span><Button variant="secondary" size="sm" isDisabled={!candidate.text} onPress={() => copy(candidate.text)}><Copy size={13} />复制</Button></div>{candidate.topic_title && <h3 className="topic-title">{candidate.topic_title}</h3>}{candidate.basis && <p className="topic-basis">{{ history: '历史话题', preference: '兴趣话题', hotspot: '近期资讯', general: '探索性话题' }[candidate.basis]} · {{ confirmed: '明确兴趣', mentioned: '只是提过', inferred: '暂定推测', unknown: '喜好未知' }[candidate.preference_level]}{candidate.evidence_ids?.length ? ` · 消息 ${candidate.evidence_ids.map(id => `#${id}`).join('、')}` : ''}</p>}<p className="reply-text">{candidate.text || '建议暂时不回复'}</p>{candidate.sources?.length > 0 && <div className="topic-sources">{candidate.sources.map(source => <a key={source.id} href={source.url} target="_blank" rel="noopener noreferrer" onClick={event => { if (!preview && window.runtime?.BrowserOpenURL) { event.preventDefault(); window.runtime.BrowserOpenURL(source.url) } }}>{source.title} · {source.publisher} · {new Date(source.published_at).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}</a>)}</div>}<div className="tradeoffs"><div className="pro"><Check size={13} /><span><b>优点：</b>{candidate.pros.join('，')}</span></div><div className="con"><ShieldCheck size={13} /><span><b>代价：</b>{candidate.cons.join('，')}</span></div></div><details><summary>适用场景与后续<ChevronRight size={12} /></summary><p>{candidate.suitable_when}</p><p>{candidate.next_step}</p></details></article>)}
       </>}</div>
       <div className="advice-footer"><ShieldCheck size={13} />本地识别 · 分析时提交文字 · 发送由你决定</div>
     </section>
@@ -226,9 +281,9 @@ export default function App() {
       <div className="brand"><div className="brand-symbol"><MessageCircle size={20} /></div><strong>聊天军师</strong>{preview && <span className="preview-badge">虚构数据预览</span>}</div>
       <div className="titlebar-actions" style={{ '--wails-draggable': 'no-drag' }}><div className="theme-toggle" aria-label="界面主题">{[['light', Sun], ['dark', Moon], ['system', Monitor]].map(([value, Icon]) => <Button key={value} variant="ghost" size="sm" isIconOnly aria-label={`${themeNames[value]}主题`} aria-pressed={theme === value} className={theme === value ? 'selected' : ''} onPress={() => setTheme(value)}><Icon size={15} /></Button>)}</div><Button variant="ghost" size="sm" isIconOnly aria-label="窗口置顶" aria-pressed={pinned} className={pinned ? 'pinned' : ''} onPress={pin}><Pin size={16} /></Button><Button variant="ghost" size="sm" isIconOnly aria-label="最小化窗口" onPress={() => windowAction('minimize')}><Minus size={18} /></Button><Button variant="ghost" size="sm" isIconOnly aria-label="最大化窗口" onPress={() => windowAction('maximize')}><Square size={13} /></Button><Button variant="ghost" size="sm" isIconOnly aria-label="关闭窗口" className="window-close" onPress={() => windowAction('close')}><X size={18} /></Button></div>
     </header>
-    <div className="workspace-toolbar"><div className="nav-actions"><Button variant="secondary" size="sm" aria-label="模型设置" onPress={() => setSettings(true)}><Settings2 size={16} />模型设置</Button><Button variant="secondary" size="sm" className={state.capturing ? 'capture-on' : ''} onPress={() => call('capture')}>{state.capturing ? <Pause size={13} /> : <Play size={13} />}{state.capturing ? '暂停采集' : '开启采集'}</Button></div></div>
+
     <Tabs className="application-tabs" selectedKey={page} onSelectionChange={value => setPage(String(value))}>
-      <div className="nav-bar"><Tabs.List aria-label="工作页面" className="main-nav">{pages.map(([id, name]) => <Tabs.Tab key={id} id={id}>{name}<Tabs.Indicator /></Tabs.Tab>)}</Tabs.List></div>
+      <div className="nav-bar"><Tabs.List aria-label="工作页面" className="main-nav">{pages.map(([id, name]) => <Tabs.Tab key={id} id={id}>{name}<Tabs.Indicator /></Tabs.Tab>)}</Tabs.List><div className="nav-actions"><Button variant="secondary" size="sm" aria-label="模型设置" onPress={() => setSettings(true)}><Settings2 size={16} />模型设置</Button><Button variant="secondary" size="sm" className={state.capturing ? 'capture-on' : ''} onPress={() => call('capture')}>{state.capturing ? <Pause size={13} /> : <Play size={13} />}{state.capturing ? '暂停采集' : '开启采集'}</Button></div></div>
       {error && <div className="error-banner" role="alert"><span>{error}</span><button aria-label="关闭错误提示" onClick={() => setError('')}><X size={16} /></button></div>}
       <Tabs.Panel id="chat" className="tab-panel chat-layout">{conversation()}{advice()}</Tabs.Panel>
       <Tabs.Panel id="profile" className="tab-panel">{profiles()}</Tabs.Panel>
@@ -253,7 +308,7 @@ export default function App() {
       <TextField value={chosenModel} onChange={provider === 'custom' ? setCustomModel : setModel}><Label>模型名称</Label><Input placeholder={provider === 'custom' ? '选择或手动填写模型 ID' : '留空使用 Codex 默认模型'} /></TextField>
       <p className="footnote">{provider === 'custom' ? '分析时将近期聊天与当前档案发送到此 API。模型列表不代表所有模型都支持聊天或具有调用权限。' : '沿用本机 Codex 登录，不修改全局配置。'}</p>
     </div></Modal.Body><Modal.Footer><Button className="violet-button" onPress={() => setSettings(false)}>完成</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
-    <Modal isOpen={Boolean(edit)} onOpenChange={value => { if (!value) setEdit(null) }}><Modal.Backdrop variant="blur" className="dialog-backdrop"><Modal.Container placement="center"><Modal.Dialog className="small-dialog"><Modal.CloseTrigger /><Modal.Header><Modal.Heading>纠正采集原文</Modal.Heading></Modal.Header><Modal.Body>{edit && <><div className="sender-options"><label><input type="radio" name="sender" checked={edit.sender === 'me'} onChange={() => setEdit({ ...edit, sender: 'me' })} />用户（我）</label><label><input type="radio" name="sender" checked={edit.sender === 'peer'} onChange={() => setEdit({ ...edit, sender: 'peer' })} />对象（对方）</label></div><TextField value={edit.text} onChange={text => setEdit({ ...edit, text })}><Label>消息正文</Label><TextArea rows={5} /></TextField></>}</Modal.Body><Modal.Footer><Button variant="secondary" onPress={() => setEdit(null)}>取消</Button><Button className="violet-button" onPress={async () => { if (await call('correct', edit)) { setEdit(null); notify('消息已纠正') } }}>保存纠正</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
+    <Modal isOpen={Boolean(edit)} onOpenChange={value => { if (!value) setEdit(null) }}><Modal.Backdrop variant="blur" className="dialog-backdrop"><Modal.Container placement="center"><Modal.Dialog className="small-dialog"><Modal.CloseTrigger /><Modal.Header><Modal.Heading>纠正采集原文</Modal.Heading></Modal.Header><Modal.Body>{edit && <><div className="sender-options"><label><input type="radio" name="sender" checked={edit.sender === 'me'} onChange={() => setEdit({ ...edit, sender: 'me' })} />用户（我）</label><label><input type="radio" name="sender" checked={edit.sender === 'peer'} onChange={() => setEdit({ ...edit, sender: 'peer' })} />对象（对方）</label></div><TextField className="correction-field" value={edit.text} onChange={text => setEdit({ ...edit, text })}><Label>消息正文</Label><TextArea rows={5} /></TextField><TextField className="correction-field" value={edit.message_time || ''} onChange={message_time => setEdit({ ...edit, message_time, time_edit: true })}><Label>核对发送时间（北京时间）</Label><Input type="datetime-local" /></TextField><p className="status-line">原识别：{edit.time_context?.label || '无时间标签'}。填写明确时间后才计算间隔；修改为留空表示未知。</p><Button variant="ghost" onPress={() => setEdit({ ...edit, message_time: '', time_edit: true })}>将时间设为未知</Button></>}</Modal.Body><Modal.Footer><Button variant="secondary" onPress={() => setEdit(null)}>取消</Button><Button className="violet-button" onPress={async () => { if (await call('correct', edit)) { setEdit(null); notify('消息已纠正') } }}>保存纠正</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
     <Modal isOpen={Boolean(confirmation)} onOpenChange={value => { if (!value) setConfirmation(null) }}><Modal.Backdrop variant="blur" className="dialog-backdrop"><Modal.Container placement="center"><Modal.Dialog className="small-dialog"><Modal.CloseTrigger /><Modal.Header><Modal.Heading>确认操作</Modal.Heading></Modal.Header><Modal.Body><p>{confirmation?.text}</p></Modal.Body><Modal.Footer><Button variant="secondary" onPress={() => setConfirmation(null)}>取消</Button><Button variant="danger" onPress={async () => { await confirmation.run(); setConfirmation(null) }}>确认</Button></Modal.Footer></Modal.Dialog></Modal.Container></Modal.Backdrop></Modal>
     {toast && <div className="toast" role="status"><Check size={16} />{toast}</div>}
   </div>

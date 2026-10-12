@@ -31,6 +31,7 @@ config.local.*
 *.json.md5
 # Local previews and generated artifacts
 screenshots/
+tests/reply-benchmark.json
 exports/
 
 packaging/tools/

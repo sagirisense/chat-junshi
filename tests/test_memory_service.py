@@ -10,6 +10,51 @@ from test_core import RESULT
 
 
 class MemoryServiceTests(unittest.TestCase):
+    def test_delete_one_message_preserves_other_ids_and_invalidates_advice(self):
+        service = self.service
+        service.current.append([('her', None, '保留一'), ('her', None, '删除二'), ('me', None, '保留三')])
+        service.result = copy.deepcopy(RESULT)
+        with self.assertRaises(ValueError):
+            service.dispatch('delete_message', {'title': service.current.title, 'id': 2})
+        service.dispatch('delete_message', {'title': service.current.title, 'id': 2, 'confirm': True})
+        self.assertEqual([row['id'] for row in service.current.messages], [1, 3])
+        self.assertIsNone(service.result)
+        service.dispatch('delete_message', {'title': service.current.title, 'id': 3, 'confirm': True})
+        from sessions import Session
+        restored = Session(service.current.title, service.root / 'data')
+        restored.append([('me', None, '下一条')])
+        self.assertEqual(restored.messages[-1]['id'], 4)
+        self.assertFalse(service.memory.directory.exists())
+        with self.assertRaises(ValueError):
+            service.dispatch('delete_message', {'title': '其他会话', 'id': 1, 'confirm': True})
+
+    def test_time_labels_and_manual_times_survive_import_export(self):
+        from message_times import parse_label
+        service = self.service
+        service.current.append([('her', None, '虚构时间消息', parse_label('昨天 18:30'))])
+        original_context = service.current.messages[0]['time_context']
+        text = service.dispatch('export', {})['text']
+        service.dispatch('import_chat', {'text': text, 'confirm': True})
+        self.assertEqual(service.current.messages[-1]['time_context'], original_context)
+        service.dispatch('correct', {'id': 2, 'sender': 'peer', 'text': '虚构时间消息',
+                                    'time_edit': True, 'message_time': '2026-10-11T18:31'})
+        self.assertEqual(service.current.messages[-1]['message_time'], '2026-10-11T18:31+08:00')
+        self.assertNotIn('time_context', service.current.messages[-1])
+        text = service.dispatch('export', {})['text']
+        service.dispatch('import_chat', {'text': text, 'confirm': True})
+        self.assertEqual(service.current.messages[-1]['message_time_source'], 'import')
+
+    def test_preview_disappears_when_context_changes(self):
+        service = self.service
+        service.reply_token = (service.current.title, service.current.revision, service.epoch)
+        service.reply_preview = copy.deepcopy(RESULT['candidates'])
+        self.assertEqual(len(service.snapshot()['reply_preview']), 1)
+        service.current.revision += 1
+        self.assertEqual(service.snapshot()['reply_preview'], [])
+        service.reply_token = (service.current.title, service.current.revision, service.epoch)
+        service.select('虚构对象B')
+        self.assertEqual(service.snapshot()['reply_preview'], [])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(dir=Path(__file__).parent)
         self.addCleanup(self.temp.cleanup)

@@ -115,6 +115,16 @@ class ResultTests(unittest.TestCase):
 
 
 class CodexCommandTests(unittest.TestCase):
+    def test_explorer_launch_resolves_desktop_binary_without_path(self):
+        from codex_bridge import command
+        with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
+            root = Path(directory)
+            binary = root / 'OpenAI/Codex/bin/version/codex.exe'
+            binary.parent.mkdir(parents=True)
+            binary.write_bytes(b'test')
+            with patch('codex_bridge.shutil.which', return_value=None), patch.dict('os.environ', {'APPDATA': str(root), 'LOCALAPPDATA': str(root)}):
+                self.assertEqual(command(), [str(binary), 'app-server'])
+
     def test_explorer_launch_resolves_fnm_native_binary_without_path(self):
         from codex_bridge import command
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as directory:
