@@ -2,6 +2,7 @@ import multiprocessing as mp
 import queue
 import unittest
 import itertools
+import threading
 from unittest.mock import patch
 import numpy as np
 from app.chatapps import WECHAT
@@ -9,6 +10,19 @@ from collector import run
 
 
 class CollectorTests(unittest.TestCase):
+    def test_shutdown_wakes_paused_collector_without_capturing(self):
+        enabled = threading.Event()
+        shutdown = threading.Event()
+
+        def stop_while_paused():
+            shutdown.set()
+            enabled.set()
+
+        with patch('app.capture.find_chat_hwnd') as find, patch('app.capture.Capture') as capture, patch.object(enabled, 'wait', side_effect=stop_while_paused):
+            run(queue.Queue(), enabled, shutdown=shutdown)
+        find.assert_not_called()
+        capture.assert_not_called()
+
     def test_missing_first_frame_reconnects_without_restarting_program(self):
         output = queue.Queue()
         enabled = mp.Event()

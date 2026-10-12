@@ -15,6 +15,7 @@ from message_times import clean_context, normalize_manual, infer_missing_times
 from assistance import request_instructions, attach_sources
 from topic_news import recent_news
 from collector import run
+from capture_diagnostics import trace
 from relationship_memory import RelationshipMemory
 from sessions import Session
 from api_bridge import analyze_api, models as api_models
@@ -37,8 +38,9 @@ class Service:
         self.current = None
         self.child = None
         self.ocr_ready = False
-        self.enabled = mp.Event()
-        self.incoming = mp.Queue()
+        self.enabled = threading.Event()
+        self.collector_stop = threading.Event()
+        self.incoming = queue.Queue()
         self.lock = threading.RLock()
         self.write_lock = threading.Lock()
         self.busy = False
@@ -86,6 +88,7 @@ class Service:
                         self.profile[key] = row['value']
 
     def emit(self, value):
+        trace('service_emit_' + ('event' if 'event' in value else 'response'))
         with self.write_lock:
             print(json.dumps(value, ensure_ascii=False), flush=True)
 
@@ -147,18 +150,24 @@ class Service:
             for row in rows))
 
     def ensure_collector(self):
+        # Wails already isolates this service from the UI. Local thread locks avoid
+        # native imports and inherited semaphore failures in a second Windows process.
         if self.child is None or not self.child.is_alive():
             self.ocr_ready = False
-            self.child = mp.Process(target=run, args=(self.incoming, self.enabled, True), daemon=True)
+            self.collector_stop = threading.Event()
+            self.child = threading.Thread(target=run, args=(self.incoming, self.enabled, True, self.collector_stop),
+                                          name='wechat-collector', daemon=True)
             self.child.start()
+            trace('collector_thread_started')
 
     def stop(self):
-        self.enabled.clear()
+        self.collector_stop.set()
+        self.enabled.set()  # Wake a paused collector so it can release WGC and exit.
         if self.child:
-            self.child.terminate()
             self.child.join(timeout=3)
             self.child = None
-        self.incoming = mp.Queue()
+        self.enabled.clear()
+        self.incoming = queue.Queue()
         self.ocr_ready = False
         self.epoch += 1
 
@@ -234,6 +243,7 @@ class Service:
                 self.select(title)
                 self.current.save()
             elif action == 'capture':
+                trace('capture_dispatch')
                 if self.enabled.is_set():
                     self.enabled.clear()
                     self.status = '采集已暂停'
@@ -543,6 +553,7 @@ class Service:
         while True:
             try:
                 event = self.incoming.get(timeout=.2)
+                trace('service_received_' + event[0])
                 with self.lock:
                     kind = event[0]
                     if kind == 'ocr_ready':
