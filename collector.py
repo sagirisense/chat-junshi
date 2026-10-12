@@ -8,7 +8,7 @@ def run(out, enabled, prewarm=False):
     cap = None
     try:
         import numpy as np
-        from app.capture import Capture, chat_area, find_chat_hwnd
+        from app.capture import Capture, chat_area, find_chat_hwnd, unminimize
         from app.chatapps import WECHAT
         from app.ocr import Reader, read_title
         ctypes.windll.user32.SetProcessDPIAware()
@@ -24,6 +24,8 @@ def run(out, enabled, prewarm=False):
         valid = False
         has_messages = False
         retry_at = 0.0
+        startup_retries = 0
+        started_at = 0.0
         while True:
             if not enabled.is_set():
                 if cap:
@@ -31,21 +33,41 @@ def run(out, enabled, prewarm=False):
                     cap = None
                 enabled.wait()
                 head = None
+                valid = has_messages = False
+                retry_at = 0.0
+                startup_retries = 0
             if cap is None:
                 hwnd, _ = find_chat_hwnd(WECHAT)
                 cap = Capture(hwnd)
+                started_at = time.perf_counter()
                 out.put(('status', '微信窗口已找到，正在等待画面并识别会话标题'))
             if not cap.alive():
                 raise RuntimeError('微信窗口已关闭，请重新开启采集')
-            if ctypes.windll.user32.IsIconic(hwnd):
-                out.put(('status', '微信已最小化，请手动还原'))
-                time.sleep(1)
+            if unminimize(hwnd):
+                started_at = time.perf_counter()
+                out.put(('status', '已无激活还原微信，正在等待窗口画面'))
+                time.sleep(.1)
                 continue
             full = cap.settled()
             if full is None and (not valid or not has_messages) and time.perf_counter() >= retry_at:
                 full = cap.snapshot()
                 retry_at = time.perf_counter() + 1.0
             if full is None:
+                # WGC can stay alive without ever delivering its first frame.
+                # Retrying OCR on an empty snapshot cannot recover that session.
+                if cap.snapshot() is None and time.perf_counter() - started_at >= 3.0:
+                    if startup_retries >= 2:
+                        out.put(('dead', '微信采集未返回画面，自动重连仍失败；请还原微信窗口后重新开启采集'))
+                        return
+                    cap.stop()
+                    cap.wait()
+                    cap = None
+                    startup_retries += 1
+                    head = None
+                    valid = has_messages = False
+                    retry_at = 0.0
+                    out.put(('status', f'微信未返回首帧，正在重新连接（{startup_retries}/2）'))
+                    continue
                 time.sleep(.1)
                 continue
             area = chat_area(full)

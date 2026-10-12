@@ -2,10 +2,16 @@ import unittest
 import numpy as np
 from types import SimpleNamespace
 from unittest.mock import patch
-from app.capture import Capture
+from app.capture import Capture, unminimize
 
 
 class CaptureTests(unittest.TestCase):
+    def test_minimized_window_restored_without_activation(self):
+        with patch('app.capture.u32.IsIconic', return_value=True), patch('app.capture.u32.ShowWindow') as show, patch('app.capture.u32.SetWindowPos') as position:
+            self.assertTrue(unminimize(123))
+        show.assert_called_once_with(123, 4)
+        position.assert_called_once_with(123, 1, 0, 0, 0, 0, 0x13)
+
     def test_latest_frame_available_even_when_message_area_not_yet_recognized(self):
         with patch('windows_capture.WindowsCapture'), patch('app.capture.chat_area', return_value=None):
             capture = Capture(123)
