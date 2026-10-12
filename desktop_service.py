@@ -15,7 +15,7 @@ from relationship_memory import RelationshipMemory
 from sessions import Session
 from api_bridge import analyze_api, models as api_models
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(os.environ.get('JUNSHI_DATA_ROOT', Path(__file__).resolve().parent))
 PROFILE_FIELDS = {
     'user_mbti': ('user', 'mbti'), 'user_score': ('user', 'subjective_score'),
     'user_strengths': ('user', 'strengths'), 'user_boundaries': ('user', 'boundaries'),
@@ -513,4 +513,14 @@ if __name__ == '__main__':
     sys.stdin.reconfigure(encoding='utf-8')
     sys.stdout.reconfigure(encoding='utf-8')
     os.environ['GOUTOUJUNSHI_MEMORY_DIR'] = str(ROOT / 'data/relationship-memory')
-    Service().serve()
+    if '--self-test' in sys.argv:
+        import numpy as np
+        from app.ocr import _engine
+        from app.capture import Capture
+        from app.chatapps import WECHAT
+        result, _ = _engine(WECHAT)(np.full((160, 320, 3), 255, dtype=np.uint8))
+        status = Service().memory.status()
+        print(json.dumps({'ocr_ready': True, 'capture_ready': Capture is not None,
+                          'recognized_messages': len(result or []), 'memory_enabled': status.get('consent_enabled', False)}))
+    else:
+        Service().serve()

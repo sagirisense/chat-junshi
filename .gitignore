@@ -32,3 +32,10 @@ config.local.*
 # Local previews and generated artifacts
 screenshots/
 exports/
+
+packaging/tools/
+packaging/vendor/
+packaging/work/
+packaging/dist/
+release/
+packaging/test/

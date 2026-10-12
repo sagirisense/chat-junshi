@@ -14,5 +14,9 @@ React、HeroUI、Wails、RapidOCR、ONNX Runtime、windows-capture 等运行依�
 以各依赖实际发行版附带的 LICENSE / NOTICE 为准。分发带依赖的安装包时需另行检查
 所包含依赖及 OCR 模型资产的许可、声明和分发条件。
 
-狗头军师 Skill 是用户另行安装的外部运行依赖。本仓库不包含其原始 Skill、知识库、
+源码模式的狗头军师 Skill 是用户另行安装的外部运行依赖。本仓库不包含其原始 Skill、知识库、
 记忆脚本、个人关系档案或用户聊天记录，不为外部 Skill 授予再分发许可。
+
+安装包构建会从公开仓库 https://github.com/shengjidaguai-china/goutoujunshi 下载固定版本的 MIT Skill，
+Copyright (c) 2026 powerycy。仅含公开规则、参考与记忆脚本，不包含用户数据。
+其完整许可随安装包放入 licenses/goutoujunshi-LICENSE，并记录源版本。

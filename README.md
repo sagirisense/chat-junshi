@@ -18,7 +18,13 @@
 - 三种自定义协议：OpenAI Chat Completions、Anthropic Messages、Gemini。
 - 紫罗兰渐变、应用内毛玻璃、浅色 / 深色 / 跟随系统、窗口置顶。
 
-## 环境与安装
+## 安装版
+
+本地构建产物为 `release/ChatJunshi-Setup-0.1.0-x64.exe`，按当前用户安装，不需要安装 Python、Go 或 Node。需要 WebView2 Runtime；安装器检测缺少运行时会提示安装后再继续。Codex 模式仍需安装并登录 Codex CLI，自定义 API 模式填写自己的密钥即可。
+
+安装版用户数据位于 `%LOCALAPPDATA%\ChatJunshi\data`，卸载默认保留；升级不迁移源码版数据，可通过导入导出迁移。安装包尚未签名，系统可能提示未知发布者。
+
+## 源码环境与安装
 
 需要 Windows 10 1903+ / 11、WebView2、Python 3.10–3.12、Go、Wails 2，以及 Node 20.19+ 或 22.12+。
 
@@ -37,7 +43,7 @@ wails build -o chat-junshi.exe
 
 双击项目根目录的 `run.bat` 启动。旧 Tkinter 界面保留为 `run-legacy.bat`，主要维护新版桌面界面。
 
-当前程序需保留完整项目目录、Python 虚拟环境、OCR 模型及外部 Skill，不是可随意复制的单文件安装包。
+源码版运行需保留完整项目目录和虚拟环境。安装版内置 Python、OCR 及公开 MIT 狗头军师 Skill；构建流程见 [Windows 安装包](packaging/README.md)。
 
 ## 日常流程
 
@@ -116,4 +122,4 @@ API 测试使用本机模拟服务和虚构数据，不需要真实密钥。前�
 
 ## 许可证
 
-本仓库代码采用 [MIT License](LICENSE)，保留已有上游版权。依赖、OCR 模型和外部 Skill 的许可分别以其实际发行版为准。分发包含依赖的安装包前应检查相应许可与 NOTICE；本仓库当前不提供依赖打包的安装版。
+本仓库代码采用 [MIT License](LICENSE)，保留已有上游版权。依赖、OCR 模型和外部 Skill 的许可分别以其实际发行版为准。分发包含依赖的安装包前应检查相应许可与 NOTICE；安装版保留所捆绑依赖和 Skill 的许可文本，构建及分发说明见 packaging/README.md。

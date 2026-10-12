@@ -1,5 +1,6 @@
 """Adapter for the installed Skill's own consent-gated, bounded memory store."""
 import json
+import sys
 import os
 from pathlib import Path
 import importlib.util
@@ -9,6 +10,8 @@ from contextlib import contextmanager
 
 
 def skill_root():
+    if getattr(sys, 'frozen', False):
+        return Path(sys._MEIPASS) / 'skill/goutoujunshi'
     return Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')) / 'skills/goutoujunshi'
 
 

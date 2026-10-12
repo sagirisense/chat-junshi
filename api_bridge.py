@@ -5,6 +5,7 @@ import socket
 from pathlib import Path
 from urllib import request, error, parse
 from codex_bridge import SCHEMA, MEMORY_SCHEMA, validate_result
+from relationship_memory import skill_root
 
 
 class NoRedirect(request.HTTPRedirectHandler):
@@ -76,7 +77,7 @@ def models(config):
 
 def analyze_api(packet, config, model, with_memory=False):
     if not model or not model.strip(): raise ValueError('请选择或填写自定义 API 模型')
-    skill = Path(os.environ.get('CODEX_HOME', Path.home() / '.codex')) / 'skills/goutoujunshi'
+    skill = skill_root()
     files = ['SKILL.md', 'references/practical/实战话术编排器：从一句回复到后续分支.md',
              'references/knowledge/09-在线约会与数字关系.md']
     try:

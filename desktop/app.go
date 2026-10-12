@@ -53,14 +53,33 @@ func projectRoot() (string, error) {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	root, err := projectRoot()
-	if err != nil {
-		a.startError = err
-		return
+	executable, _ := os.Executable()
+	bundled := filepath.Join(filepath.Dir(executable), "service", "junshi-service.exe")
+	if _, err := os.Stat(bundled); err == nil {
+		local, err := os.UserCacheDir()
+		if err != nil {
+			a.startError = err
+			return
+		}
+		root := filepath.Join(local, "ChatJunshi")
+		if err = os.MkdirAll(root, 0700); err != nil {
+			a.startError = err
+			return
+		}
+		a.process = exec.Command(bundled)
+		a.process.Dir = root
+		a.process.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "JUNSHI_DATA_ROOT="+root)
+	} else {
+		root, err := projectRoot()
+		if err != nil {
+			a.startError = err
+			return
+		}
+		a.process = exec.Command(filepath.Join(root, ".venv", "Scripts", "python.exe"), "-u", filepath.Join(root, "desktop_service.py"))
+		a.process.Dir = root
+		a.process.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
 	}
-	a.process = exec.Command(filepath.Join(root, ".venv", "Scripts", "python.exe"), "-u", filepath.Join(root, "desktop_service.py"))
-	a.process.Dir = root
-	a.process.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+	var err error
 	a.process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	a.input, err = a.process.StdinPipe()
 	if err != nil {

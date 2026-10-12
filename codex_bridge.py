@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+from relationship_memory import skill_root
 
 ACTIVE_SERVERS = set()
 ACTIVE_LOCK = threading.Lock()
@@ -180,8 +181,7 @@ class AppServer:
 
 
 def analyze(packet, skill_path=None, timeout=180, model=None, with_memory=False):
-    skill = Path(skill_path or Path(os.environ.get('CODEX_HOME', Path.home() / '.codex'))
-                 / 'skills/goutoujunshi/SKILL.md').resolve()
+    skill = Path(skill_path or skill_root() / 'SKILL.md').resolve()
     if not skill.is_file():
         raise RuntimeError('未找到本地 goutoujunshi/SKILL.md')
     server = AppServer()
