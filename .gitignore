@@ -1,0 +1,34 @@
+upstream/
+.venv/
+__pycache__/
+data/
+protocol-schema/
+*.pyc
+startup-error.txt
+desktop/frontend/node_modules/
+desktop/frontend/dist/
+desktop/frontend/wailsjs/
+desktop/build/bin/
+.go-cache/
+
+# Private runtime state and credentials
+.env
+.env.*
+!.env.example
+.codex/
+.agents/
+*.log
+*.sqlite
+*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.pem
+*.key
+*credentials*.json
+auth.json
+config.local.*
+*.json.md5
+# Local previews and generated artifacts
+screenshots/
+exports/

@@ -1,0 +1,18 @@
+聊天军师 / Chat Junshi
+Copyright (c) 2026 Chat Junshi contributors
+
+本项目集成 / 改编了 MIT 开源项目 jev-chat-windows 的窗口采集、聊天应用识别、OCR 代码和模型来源预设。
+来源：https://github.com/jev-chat/jev-chat-windows
+参考版本：c6d3a10474ce1ff3b7f8f6402b3b5e0e58fad5f1
+原版权及许可文本完整保留在 licenses/jev-chat-windows-LICENSE 和 licenses/jev-chat-windows-NOTICE。
+
+本项目不是原项目的官方发行版，不表示获得原作者背书。
+此仓库未集成上游 Jev 判断内核、PySide6 或 PySide6-Fluent-Widgets；
+上游 NOTICE 对其发行包的说明仅描述上游，不能直接用于描述本项目的发行包。
+
+React、HeroUI、Wails、RapidOCR、ONNX Runtime、windows-capture 等运行依赖的许可
+以各依赖实际发行版附带的 LICENSE / NOTICE 为准。分发带依赖的安装包时需另行检查
+所包含依赖及 OCR 模型资产的许可、声明和分发条件。
+
+狗头军师 Skill 是用户另行安装的外部运行依赖。本仓库不包含其原始 Skill、知识库、
+记忆脚本、个人关系档案或用户聊天记录，不为外部 Skill 授予再分发许可。
