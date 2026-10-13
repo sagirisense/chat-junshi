@@ -5,15 +5,16 @@
 ## 验证
 
 ```powershell
-.venv\Scripts\python.exe -m unittest discover -s tests
 cd desktop
 go test ./...
-cd frontend
-npm ci
-npm run build
+go vet ./...
+cd ..
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build-frontend.ps1
 ```
 
 API 测试使用本机模拟 HTTP 服务，不需要真实密钥。真实模型联调只使用虚构聊天，并自行承担接口调用费用。
+
+旧 Python 实现保留作兼容性对照，修改时可运行 `.venv\Scripts\python.exe -m unittest discover -s tests`。原生 WGC、OCR 和旧库对照测试需按测试中的环境变量显式启用；默认测试不代表真实 GUI 验收。人工验收项见 [docs/go-migration.md](docs/go-migration.md)。
 
 ## 提交检查
 

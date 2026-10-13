@@ -2,14 +2,14 @@
 
 面向 Windows 微信单聊的本地回复工作台：**读屏与 OCR → 核对原文及身份 → 关系背景与记忆 → 候选回复和优缺点 → 自行复制发送**。
 
-桌面端使用 Go / Wails 2，界面使用 React 19 / HeroUI 3。Python 负责采集、OCR、关系记忆和模型接入。生产版通过本地标准输入输出通信，不运行 Web 服务。
+桌面和业务使用 Go / Wails 2，界面使用 React 19 / HeroUI 3。Go负责采集调度、OCR、关系记忆和模型接入，直接调用原生WGC及ONNX Runtime；生产版不启动Python或Web服务。
 
 > 本项目仍处于开发阶段。仅采集窗口中识别到的部分对话，不保证完整历史或 OCR 准确性。请核对原文与身份后再分析。
 
 ## 功能
 
 - 按微信进程与精确窗口 HWND 采集，避免按标题误抓辅助工具。
-- 本地 RapidOCR，采集暂停 / 恢复，原文和说话人纠错。
+- 本地PP-OCRv4模型，采集暂停 / 恢复，原文和说话人纠错。
 - 独立回复目标：预设选项和自定义输入。
 - 四步建档：用户、对象、关系背景和明确的记忆同意。
 - 本地关系记忆：查看、暂停、恢复、撤销、忘记对象和删除。
@@ -26,24 +26,24 @@
 
 ## 源码环境与安装
 
-需要 Windows 10 1903+ / 11、WebView2、Python 3.10–3.12、Go、Wails 2，以及 Node 20.19+ 或 22.12+。
+需要 Windows 10 1903+ / 11、WebView2、Go 1.25+（启用CGo）、MinGW、Wails 2、Rust GNU工具链，以及 Node 20.19+ 或 22.12+。Python仅用于可选的旧实现兼容对照测试。
 
-另需由用户自行安装 [goutoujunshi · 狗头军师 Skill](https://github.com/shengjidaguai-china/goutoujunshi)，目录通常为 `%USERPROFILE%\.codex\skills\goutoujunshi`；本仓库不分发该 Skill 的正文、知识库或记忆脚本。两种模型接入均读取该 Skill 的规则；长期记忆复用其 `scripts/memory_store.py`。
+源码运行可使用用户安装的 [goutoujunshi · 狗头军师 Skill](https://github.com/shengjidaguai-china/goutoujunshi)，通常位于 `%USERPROFILE%\.codex\skills\goutoujunshi`。安装包只包含固定公开版本的规则和参考；长期记忆由Go实现，兼容旧SQLite表，不再执行记忆脚本。
 
 ```powershell
-python -m venv .venv
-.venv\Scripts\python.exe -m pip install -r requirements.txt
-cd desktop\frontend
-npm ci
-cd ..
-wails build -o chat-junshi.exe
+rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+# 传入现有v4模型目录和固定ONNX DLL；哈希见packaging/ocr-source.json
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/prepare-runtime.ps1 -ModelDirectory D:\ocr\models -OnnxDll D:\ocr\onnxruntime.dll
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build-frontend.ps1
+cd desktop
+wails build -s -o chat-junshi.exe
 ```
 
 也可在环境准备好后双击 `build-desktop.bat`。构建前保存草稿并退出同名程序，以免 Windows 文件锁影响构建。
 
 双击项目根目录的 `run.bat` 启动新版桌面界面。
 
-源码版运行需保留完整项目目录和虚拟环境。安装版内置 Python、OCR 及公开 MIT 狗头军师 Skill；构建流程见 [Windows 安装包](packaging/README.md)。
+源码版运行需保留项目目录及`.go-cache/runtime`资产。现有工作区可从旧`.venv`提取固定模型和DLL作为构建输入，但运行时不依赖虚拟环境。安装版内置原生库、OCR及公开MIT狗头军师规则；构建流程见 [Windows 安装包](packaging/README.md)。
 
 ## 日常流程
 
@@ -134,11 +134,14 @@ API 测试使用本机模拟服务和虚构数据，不需要真实密钥。前�
 | --- | --- |
 | [jev-chat-windows](https://github.com/jev-chat/jev-chat-windows) | 窗口采集、聊天应用识别、本地 OCR、模型来源预设与模型选择流程；参考版本 `c6d3a10474ce1ff3b7f8f6402b3b5e0e58fad5f1` |
 | [jev-chat-jarvis](https://github.com/jev-chat/jev-chat-jarvis) | JevChat 上游项目背景；本项目未集成其 Jev 判断内核 |
-| [goutoujunshi · 狗头军师 Skill](https://github.com/shengjidaguai-china/goutoujunshi) | 用户另行安装的关系分析规则、实战参考和受控记忆脚本；本仓库不分发其内容 |
+| [goutoujunshi · 狗头军师 Skill](https://github.com/shengjidaguai-china/goutoujunshi) | 关系分析规则与参考；安装构建下载固定公开 MIT 版本，仅打包规则和参考，不打包 Python 脚本或个人档案 |
 | [Wails](https://github.com/wailsapp/wails) | Go 桌面宿主及 WebView2 接入 |
 | [React](https://github.com/facebook/react)、[HeroUI](https://github.com/heroui-inc/heroui)、[Tailwind CSS](https://github.com/tailwindlabs/tailwindcss)、[Vite](https://github.com/vitejs/vite) | 界面、交互组件、样式与前端构建 |
 | [Lucide](https://github.com/lucide-icons/lucide) | 界面图标 |
 | [RapidOCR](https://github.com/RapidAI/RapidOCR)、[ONNX Runtime](https://github.com/microsoft/onnxruntime) | 本地 OCR 识别与模型运行 |
+| [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR) | PP-OCRv4 模型，来源及哈希见 `packaging/ocr-source.json` |
+| [gopaddleocr](https://github.com/multippt/gopaddleocr)、[onnxruntime_go](https://github.com/yalue/onnxruntime_go) | Go OCR 识别、改编的检测代码与 ONNX 绑定；检测代码保留 Apache-2.0 许可 |
+| [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) | Go 关系记忆及旧 SQLite 数据兼容 |
 | [windows-capture](https://github.com/NiiightmareXD/windows-capture) | Windows 窗口采集绑定 |
 | [Codex](https://github.com/openai/codex) | 可选的本机 App Server 分析通道 |
 
@@ -146,4 +149,4 @@ API 测试使用本机模拟服务和虚构数据，不需要真实密钥。前�
 
 ## 许可证
 
-本仓库代码采用 [MIT License](LICENSE)，保留已有上游版权。依赖、OCR 模型和外部 Skill 的许可分别以其实际发行版为准。分发包含依赖的安装包前应检查相应许可与 NOTICE；安装版保留所捆绑依赖和 Skill 的许可文本，构建及分发说明见 packaging/README.md。
+本项目自身代码采用 [MIT License](LICENSE)，保留已有上游版权；`desktop/internal/ocr/detection.go` 改编部分采用 Apache-2.0，见 [NOTICE](NOTICE)。依赖、OCR 模型和外部 Skill 遵守各自许可。安装版保留 Go、Rust、前端、OCR 和 Skill 的许可与声明；构建及分发说明见 [packaging/README.md](packaging/README.md)。

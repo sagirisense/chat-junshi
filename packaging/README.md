@@ -1,30 +1,27 @@
 # Windows 安装包构建
 
-安装版内置 Python 运行时、RapidOCR 及 ONNX 模型、公开 MIT 狗头军师 Skill，默认按用户安装，无需管理员权限。
-Codex CLI 和模型登录信息不随包分发；使用自定义 API 可不安装 Codex。
-目标电脑需要 Windows 10 1903+ x64 / Windows 11 和 WebView2 Runtime。
+Go迁移版内置WGC原生DLL、PP-OCRv4模型、ONNX Runtime及固定公开MIT狗头军师规则，不捆绑Python运行时或脚本。目标系统为Windows 10 1903+ x64 / Windows 11，需WebView2。Codex CLI及登录信息不分发。
 
 ## 构建
 
-先按项目 README 准备 Python、前端、Go/Wails。另需 PyInstaller 和 Inno Setup 6 编译器：
+准备Go 1.25+、MinGW/CGo、Wails 2、Rust GNU工具链、Node 20.19+或22.12+和Inno Setup 6。
 
 ```powershell
-.venv\Scripts\python.exe -m pip install -r packaging/requirements-build.txt
-.venv\Scripts\python.exe packaging/fetch-skill.py
-cd desktop/frontend
-npm ci
-npm run build
-cd ../..
-powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build.ps1 -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
+rustup toolchain install stable-x86_64-pc-windows-gnu --profile minimal
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/fetch-skill.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build.ps1 -ModelDirectory D:\ocr\models -OnnxDll D:\ocr\onnxruntime.dll -Iscc 'C:\Program Files (x86)\Inno Setup 6\ISCC.exe'
 ```
 
-产物为 `release/ChatJunshi-Setup-0.1.0-x64.exe`。Skill 来源固定在 `skill-source.json`，只下载公开规则、参考、许可及记忆脚本，不复制用户安装的 Skill 或其个人数据。
-`assemble.py` 只复制桌面构建输出、冻结服务和许可，生成包含每个文件 SHA256 的清单。
+模型及DLL必须匹配`ocr-source.json`的固定SHA256；`prepare-runtime.ps1`默认也能从旧工作区的`.venv`提取这些文件，不执行Python。可传`-VCRedistDirectory`指定VC143 x64可再分发DLL目录。字典在构建时从v4模型metadata提取；参考实现文件名`ppocr_keys_v5.txt`不表示模型升级。
 
-## 数据与卸载
+`build-frontend.ps1`构建界面，`prepare-runtime.ps1`构建原生WGC，`assemble.ps1`只复制声明的运行资产、公开规则及许可证，生成每个文件的SHA256清单并拒绝Python与私有数据。旧`assemble.py`、`fetch-skill.py`和Python测试保留作历史对照，不属于新构建入口。
 
-程序文件位于 `%LOCALAPPDATA%\Programs\ChatJunshi`；用户数据位于 `%LOCALAPPDATA%\ChatJunshi\data`。
-升级覆盖程序文件，卸载默认保留用户数据。请自行备份后通过应用或文件管理器清理数据。
-源码版的旧数据不自动迁移，可导出导入，或退出程序后手动复制到新数据目录。
+产物为`release/ChatJunshi-Setup-0.1.0-x64.exe`。安装包未签名。
 
-安装包目前没有代码签名。Windows 可能显示未知发布者提示。包中包含第三方许可证及明确的上游来源，分发前核对 `payload-manifest.json`。
+## 数据与升级
+
+程序位于`%LOCALAPPDATA%\Programs\ChatJunshi`，数据位于`%LOCALAPPDATA%\ChatJunshi\data`。升级移除旧安装的`service`目录，仅替换程序文件；卸载保留数据。
+
+Go首次打开已有数据前，会在`data/migration-backup-go-v1`备份聊天JSON和一致SQLite快照，完成后写入`go-migration-v1.json`标记。备份失败时不打开业务服务。源码版与安装版数据仍独立，可通过导入导出迁移。
+
+模型准确率、真实GUI采集和安装升级必须按`docs/go-migration.md`验收，编译成功不能替代这些检查。

@@ -10,6 +10,7 @@ desktop/frontend/dist/
 desktop/frontend/wailsjs/
 desktop/build/bin/
 .go-cache/
+desktop/native/wgc/target/
 
 # Private runtime state and credentials
 .env

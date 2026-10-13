@@ -1,46 +1,33 @@
 package main
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"sync"
-	"syscall"
-	"time"
-
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"io"
+	"junshi-desktop/internal/codexclient"
+	"junshi-desktop/internal/modelapi"
+	"junshi-desktop/internal/service"
+	"os"
+	"path/filepath"
+	"time"
 )
 
 type App struct {
 	ctx        context.Context
-	process    *exec.Cmd
-	input      io.WriteCloser
-	mu         sync.Mutex
-	sequence   int
-	pending    map[int]chan response
+	service    *service.Service
 	startError error
 }
 
-type response struct {
-	ID    int             `json:"id"`
-	Data  json.RawMessage `json:"data"`
-	Error string          `json:"error"`
-	Event string          `json:"event"`
-}
-
-func NewApp() *App { return &App{pending: make(map[int]chan response)} }
+func NewApp() *App { return &App{} }
 
 func projectRoot() (string, error) {
 	executable, _ := os.Executable()
 	cwd, _ := os.Getwd()
 	for _, start := range []string{filepath.Dir(executable), cwd} {
 		for current := start; ; current = filepath.Dir(current) {
-			if _, err := os.Stat(filepath.Join(current, "desktop_service.py")); err == nil {
+			if _, err := os.Stat(filepath.Join(current, "desktop", "wails.json")); err == nil {
 				return current, nil
 			}
 			if filepath.Dir(current) == current {
@@ -48,123 +35,101 @@ func projectRoot() (string, error) {
 			}
 		}
 	}
-	return "", errors.New("未找到采集服务，请从完整项目目录启动")
+	return "", errors.New("未找到源码项目目录，请从完整项目启动")
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	executable, _ := os.Executable()
-	bundled := filepath.Join(filepath.Dir(executable), "service", "junshi-service.exe")
-	if _, err := os.Stat(bundled); err == nil {
+	assets := filepath.Join(filepath.Dir(executable), "runtime")
+	var root string
+	if _, err := os.Stat(assets); err == nil {
 		local, err := os.UserCacheDir()
 		if err != nil {
 			a.startError = err
 			return
 		}
-		root := filepath.Join(local, "ChatJunshi")
-		if err = os.MkdirAll(root, 0700); err != nil {
-			a.startError = err
-			return
-		}
-		a.process = exec.Command(bundled)
-		a.process.Dir = root
-		a.process.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8", "JUNSHI_DATA_ROOT="+root)
+		root = filepath.Join(local, "ChatJunshi")
 	} else {
-		root, err := projectRoot()
+		var err error
+		root, err = projectRoot()
 		if err != nil {
 			a.startError = err
 			return
 		}
-		a.process = exec.Command(filepath.Join(root, ".venv", "Scripts", "python.exe"), "-u", filepath.Join(root, "desktop_service.py"))
-		a.process.Dir = root
-		a.process.Env = append(os.Environ(), "PYTHONIOENCODING=utf-8")
+		assets = filepath.Join(root, ".go-cache", "runtime")
 	}
-	var err error
-	a.process.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	a.input, err = a.process.StdinPipe()
+	if override:=os.Getenv("JUNSHI_DATA_ROOT"); override!="" { root=override }
+	if err := service.BackupBeforeMigration(root); err != nil {
+		a.startError = err
+		return
+	}
+	host, err := service.New(root, func(state service.Data) { runtime.EventsEmit(a.ctx, "service:state", state) })
 	if err != nil {
 		a.startError = err
 		return
 	}
-	output, err := a.process.StdoutPipe()
-	if err != nil {
-		a.startError = err
-		return
+	a.service = host
+	if _, err = os.Stat(filepath.Join(assets, "skill", "goutoujunshi", "SKILL.md")); err == nil {
+		host.SkillRoot = filepath.Join(assets, "skill", "goutoujunshi")
 	}
-	if err = a.process.Start(); err != nil {
-		a.startError = err
-		return
-	}
-	go func() {
-		scanner := bufio.NewScanner(output)
-		scanner.Buffer(make([]byte, 65536), 8*1024*1024)
-		for scanner.Scan() {
-			var item response
-			if json.Unmarshal(scanner.Bytes(), &item) != nil {
-				continue
-			}
-			if item.Event != "" {
-				var data interface{}
-				json.Unmarshal(item.Data, &data)
-				runtime.EventsEmit(a.ctx, "service:"+item.Event, data)
-			} else {
-				a.mu.Lock()
-				channel := a.pending[item.ID]
-				a.mu.Unlock()
-				if channel != nil {
-					select {
-					case channel <- item:
-					default:
-					}
-				}
-			}
-		}
-		a.mu.Lock()
-		a.startError = errors.New("本地采集服务已停止，请重启应用")
-		for _, channel := range a.pending {
-			select {
-			case channel <- response{Error: a.startError.Error()}:
-			default:
-			}
-		}
-		a.mu.Unlock()
-		runtime.EventsEmit(a.ctx, "service:error", "本地采集服务已停止，请重启应用")
-	}()
+	host.ConfigureCapture(filepath.Join(assets, "models"), filepath.Join(assets, "onnxruntime.dll"), filepath.Join(assets, "junshi_wgc.dll"))
 }
 
 func (a *App) Call(action string, payload map[string]interface{}) (interface{}, error) {
-	a.mu.Lock()
-	if a.startError != nil {
-		err := a.startError
-		a.mu.Unlock()
-		return nil, err
-	}
-	if a.input == nil {
-		a.mu.Unlock()
-		return nil, errors.New("服务尚未就绪，请稍后重试")
-	}
-	a.sequence++
-	id := a.sequence
-	channel := make(chan response, 1)
-	a.pending[id] = channel
-	bytes, _ := json.Marshal(map[string]interface{}{"id": id, "action": action, "payload": payload})
-	_, err := a.input.Write(append(bytes, '\n'))
-	a.mu.Unlock()
-	defer func() { a.mu.Lock(); delete(a.pending, id); a.mu.Unlock() }()
-	if err != nil {
-		return nil, errors.New("无法连接采集服务")
-	}
-	select {
-	case result := <-channel:
-		if result.Error != "" {
-			return nil, errors.New(result.Error)
+	if action == "models" && payload["provider"] != "custom" {
+		ctx := a.ctx
+		if ctx == nil {
+			ctx = context.Background()
 		}
-		var data interface{}
-		err = json.Unmarshal(result.Data, &data)
-		return data, err
-	case <-time.After(60 * time.Second):
-		return nil, errors.New("本地操作超时，请检查采集服务")
+		ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
+		defer cancel()
+		server, err := codexclient.Start()
+		if err != nil {
+			return nil, err
+		}
+		defer server.Close()
+		if err = server.Initialize(ctx, "wechat_junshi"); err != nil {
+			return nil, err
+		}
+		rows, err := server.Models(ctx)
+		if err != nil {
+			return nil, err
+		}
+		models := []string{}
+		for _, row := range rows {
+			if model, ok := row["model"].(string); ok {
+				models = append(models, model)
+			}
+		}
+		return map[string]interface{}{"models": models}, nil
 	}
+	if action == "models" && payload["provider"] == "custom" {
+		encoded, err := json.Marshal(payload["api"])
+		if err != nil {
+			return nil, err
+		}
+		var config modelapi.Config
+		if err = json.Unmarshal(encoded, &config); err != nil {
+			return nil, errors.New("API 配置无效")
+		}
+		ctx := a.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
+		models, err := (modelapi.Client{}).Models(ctx, config)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"models": models}, nil
+	}
+	if a.startError != nil {
+		return nil, a.startError
+	}
+	if a.service == nil {
+		return nil, errors.New("Go 服务尚未就绪，请稍后重试")
+	}
+	return a.service.Dispatch(action, payload)
 }
 
 func (a *App) Copy(text string) error { return runtime.ClipboardSetText(a.ctx, text) }
@@ -223,16 +188,7 @@ func (a *App) WindowAction(action string) {
 	}
 }
 func (a *App) shutdown(ctx context.Context) {
-	if a.input != nil {
-		a.input.Close()
-	}
-	if a.process != nil && a.process.Process != nil {
-		done := make(chan struct{})
-		go func() { a.process.Wait(); close(done) }()
-		select {
-		case <-done:
-		case <-time.After(5 * time.Second):
-			a.process.Process.Kill()
-		}
+	if a.service != nil {
+		a.service.Close()
 	}
 }
