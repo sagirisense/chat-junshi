@@ -104,6 +104,7 @@ func (s *Service) beginAnalysis(payload Data) error {
 		profile = map[string]string{}
 	}
 	packet = appendJSON(packet, "\n用户明确填写的本轮档案（未知保持未知）：\n", profile)
+	packet += "\n双方性别仅以明确填写的档案为依据；未填写或不愿透露时保持未知，不根据姓名、头像或聊天推断，也不按性别套用关系策略。"
 	withMemory := contextData != nil && task == "reply"
 	if contextData != nil {
 		packet += "\n宿主已经确认用户启用了本机关系记忆，无需再次询问同意；记忆读写全部由宿主负责。"

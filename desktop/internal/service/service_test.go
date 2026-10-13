@@ -84,6 +84,35 @@ func TestProfileConsentAndObjectIsolation(t *testing.T) {
 	}
 }
 
+func TestGenderProfilePersistenceAndImport(t *testing.T) {
+	root := t.TempDir()
+	s, err := New(root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	call(t, s, "bind_profile", Data{"title": "性别测试对象"})
+	call(t, s, "profile", Data{"profile": Data{"user_gender": "男", "peer_gender": "自定义描述"}, "persist": false})
+	rows, err := s.Memory.Rows(s.subject())
+	if err != nil || len(rows) != 0 {
+		t.Fatal("temporary profile persisted", rows, err)
+	}
+	call(t, s, "memory", Data{"operation": "enable", "consent": true})
+	call(t, s, "profile", Data{"profile": Data{"user_gender": "男", "peer_gender": "自定义描述"}, "persist": true})
+	exported := call(t, s, "export_profile", Data{})
+	draft := call(t, s, "prepare_import_profile", Data{"text": exported["text"]})
+	if draft["profile"].(map[string]string)["peer_gender"] != "自定义描述" {
+		t.Fatal(draft)
+	}
+	restored, err := New(root, nil)
+	if err != nil || restored.Profile["user_gender"] != "男" || restored.Profile["peer_gender"] != "自定义描述" {
+		t.Fatal(restored, err)
+	}
+	call(t, restored, "bind_profile", Data{"title": "其他测试对象"})
+	if restored.Profile["peer_gender"] != "" || restored.Profile["user_gender"] != "男" {
+		t.Fatal("gender leaked across objects", restored.Profile)
+	}
+}
+
 func TestSnapshotIsolationAndDeletion(t *testing.T) {
 	s, err := New(t.TempDir(), nil)
 	if err != nil {

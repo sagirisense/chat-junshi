@@ -1,7 +1,26 @@
 import { useEffect, useState } from 'react'
-import { Button, Input, Label, Modal, TextArea, TextField } from '@heroui/react'
+import { Button, Input, Label, ListBox, Modal, Select, TextArea, TextField } from '@heroui/react'
 import { Brain, ChevronLeft, ChevronRight, HeartHandshake } from 'lucide-react'
 import { profileGroups } from '../domain'
+
+const genders = ['男', '女', '非二元', '不愿透露']
+function GenderField({ label, value = '', onChange }) {
+  const [custom, setCustom] = useState(Boolean(value && !genders.includes(value)))
+  useEffect(() => { if (genders.includes(value)) setCustom(false); else if (value) setCustom(true) }, [value])
+  return <div className="profile-field">
+    <Select aria-label={label} selectedKey={custom ? '__custom__' : value || '__unset__'} onSelectionChange={key => {
+      setCustom(key === '__custom__')
+      onChange(key === '__custom__' || key === '__unset__' ? '' : String(key))
+    }}>
+      <Label>{label}<span className="optional">可选</span></Label>
+      <Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger>
+      <Select.Popover><ListBox>
+        {[['__unset__', '未填写'], ...genders.map(value => [value, value]), ['__custom__', '自定义']].map(([id, text]) => <ListBox.Item key={id} id={id} textValue={text}><Label>{text}</Label><ListBox.ItemIndicator /></ListBox.Item>)}
+      </ListBox></Select.Popover>
+    </Select>
+    {custom && <TextField aria-label={`${label}自定义`} value={value} onChange={onChange}><Input placeholder="填写你希望使用的描述" maxLength={200} /></TextField>}
+  </div>
+}
 
 export default function ProfileDialog({ open, onClose, state, call, notify, importedDraft }) {
   const [step, setStep] = useState(0)
@@ -15,6 +34,7 @@ export default function ProfileDialog({ open, onClose, state, call, notify, impo
   }, [open, importedDraft])
 
   function field(key, label, placeholder) {
+	if (key.endsWith('_gender')) return <GenderField key={key} label={label} value={form[key] || ''} onChange={value => setForm(old => ({ ...old, [key]: value }))} />
     const long = ['history', 'relationship', 'user_strengths', 'user_boundaries', 'emotion'].includes(key)
     const Control = long ? TextArea : Input
     return <TextField key={key} className="profile-field" value={form[key] || ''} onChange={value => setForm(old => ({ ...old, [key]: value }))}>

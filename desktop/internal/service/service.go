@@ -20,6 +20,7 @@ type Data = map[string]interface{}
 type profileField struct{ scope, field string }
 
 var profileFields = map[string]profileField{
+	"user_gender": {"user", "gender"}, "peer_gender": {"object", "gender"},
 	"user_mbti": {"user", "mbti"}, "user_score": {"user", "subjective_score"}, "user_strengths": {"user", "strengths"}, "user_boundaries": {"user", "boundaries"},
 	"peer_label": {"object", "display_label"}, "peer_mbti": {"object", "mbti"}, "peer_score": {"object", "subjective_score"}, "relationship": {"relationship", "stage"}, "history": {"relationship", "history"}, "goal": {"relationship", "goal"}, "emotion": {"relationship", "emotion"},
 }
