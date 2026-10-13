@@ -5,6 +5,24 @@ from app.ocr import Reader, similar, has_unread_text
 
 
 class OCRCompletenessTests(unittest.TestCase):
+    def test_repeated_old_reply_does_not_hide_new_messages_above_it(self):
+        with patch('app.ocr._engine'):
+            reader = Reader()
+        old = [('her', None, '是的'), ('me', None, '我吃了药'), ('her', None, '嗯嗯')]
+        reader.seen = old.copy()
+        lines = [(who, name, text, index * 50) for index, (who, name, text) in enumerate(old + [('me', None, '那你早点休息吧'), ('her', None, '嗯嗯')])]
+        self.assertEqual(reader.new_lines(lines), [('me', None, '那你早点休息吧'), ('her', None, '嗯嗯')])
+        self.assertEqual(reader.new_lines(lines), [])
+
+    def test_new_repeated_replies_are_kept_but_scrolled_history_is_not(self):
+        with patch('app.ocr._engine'):
+            reader = Reader()
+        reader.seen = [('her', None, '嗯嗯')]
+        lines = [('her', None, '嗯嗯', 20), ('her', None, '嗯嗯', 80)]
+        self.assertEqual(reader.new_lines(lines), [('her', None, '嗯嗯')])
+        self.assertEqual(reader.new_lines(lines), [])
+        self.assertEqual(reader.new_lines([('me', None, '更早的消息', 0)] + lines), [])
+
     def test_missing_visible_text_rows_are_rejected(self):
         chat = np.full((120, 200, 3), 255, np.uint8)
         chat[30:42, 65:100] = 0

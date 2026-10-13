@@ -1,6 +1,17 @@
 聊天军师 / Chat Junshi
 Copyright (c) 2026 Chat Junshi contributors
 
+Go OCR 检测原型改编自 multippt/gopaddleocr（Apache-2.0），固定版本
+d4b7cc8b442974de8020337bb58495bef1c4efe0。
+来源：https://github.com/multippt/gopaddleocr
+修改包括 PP-OCRv4 配置读取、缩放及检测膨胀；完整许可位于
+licenses/gopaddleocr-APACHE-2.0.txt。
+desktop/internal/ocr/detection.go 的改编代码仍受 Apache-2.0 约束，仓库 MIT 许可不替代其上游许可。
+
+原生WGC桥接使用windows-capture 2.0.1（MIT），来源：
+https://github.com/NiiightmareXD/windows-capture
+完整许可位于licenses/windows-capture-MIT.txt。桥接代码不包含Python运行时。
+
 本项目集成 / 改编了 MIT 开源项目 jev-chat-windows 的窗口采集、聊天应用识别、OCR 代码和模型来源预设。
 来源：https://github.com/jev-chat/jev-chat-windows
 参考版本：c6d3a10474ce1ff3b7f8f6402b3b5e0e58fad5f1
@@ -18,5 +29,12 @@ React、HeroUI、Wails、RapidOCR、ONNX Runtime、windows-capture 等运行依�
 记忆脚本、个人关系档案或用户聊天记录，不为外部 Skill 授予再分发许可。
 
 安装包构建会从公开仓库 https://github.com/shengjidaguai-china/goutoujunshi 下载固定版本的 MIT Skill，
-Copyright (c) 2026 powerycy。仅含公开规则、参考与记忆脚本，不包含用户数据。
+Copyright (c) 2026 powerycy。仅含公开规则与参考，不包含 Python 记忆脚本或用户数据。
 其完整许可随安装包放入 licenses/goutoujunshi-LICENSE，并记录源版本。
+
+Go OCR 使用 gopaddleocr、onnxruntime_go；SQLite 使用 modernc.org/sqlite。
+构建收集 Go、Rust 和前端依赖的 LICENSE / NOTICE。模型与 DLL 来源及哈希
+固定于 packaging/ocr-source.json，模型相关许可见 licenses/PaddleOCR-LICENSE
+及 licenses/RapidOCR-LICENSE；ONNX Runtime 的许可与第三方声明随运行资产保留。
+VC 运行库的再分发清单和第三方声明见 licenses/Microsoft-VC-Redist.txt
+及 licenses/Microsoft-VC-ThirdPartyNotices.txt，使用遵守其发行版许可。

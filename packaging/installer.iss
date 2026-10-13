@@ -25,6 +25,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 [Files]
 Source: "dist\ChatJunshi\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+[InstallDelete]
+Type: filesandordirs; Name: "{app}\service"
 [Icons]
 Name: "{group}\聊天军师"; Filename: "{app}\chat-junshi.exe"
 Name: "{group}\卸载聊天军师"; Filename: "{uninstallexe}"

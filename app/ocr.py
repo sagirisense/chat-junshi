@@ -227,11 +227,21 @@ class Reader:
         """去重（滚动不重复）→ 这一帧里真正新出现的 [(who, name, text)]。
         本帧有已知行时只要已知行下方的：往上滚翻出来的旧消息在已知行上方，不算。
         本帧一行已知的都没有（大图把旧文字全顶出去了、切了聊天、滚远了）：全算，宁可多算不能漏。
-        ponytail: 同一人连发两句一模一样的会吞一句——对触发分析无害。"""
-        known_y = [y for w, n, t, y in lines if self._seen(w, n, t)]
+        重复文字按出现顺序匹配；旧消息上方的历史内容不追加。"""
+        # Match old occurrences in order: a later repeated short reply must not
+        # move the old-message boundary below genuinely new messages.
+        cursor = 0
+        known_y = []
+        for who, _, text, y in lines:
+            for index in range(cursor, len(self.seen)):
+                old_who, _, old_text = self.seen[index]
+                if old_who == who and similar(old_text, text):
+                    known_y.append(y)
+                    cursor = index + 1
+                    break
         floor = max(known_y) if known_y else -1
-        new = [(w, n, t) for w, n, t, y in lines if y > floor and not self._seen(w, n, t)]
-        self.seen.extend((w, n, t) for w, n, t, _ in lines if not self._seen(w, n, t))
+        new = [(w, n, t) for w, n, t, y in lines if y > floor]
+        self.seen.extend(new)
         del self.seen[:-500]
         return [(w, n, t, self.line_times.get((w, n, t))) for w, n, t in new] if with_times else new
 

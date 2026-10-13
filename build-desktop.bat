@@ -1,4 +1,7 @@
 @echo off
+cd /d "%~dp0"
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging\prepare-runtime.ps1
+if errorlevel 1 goto failedroot
 cd /d "%~dp0desktop"
 set "BUNDLED_NODE=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
 if not exist "%BUNDLED_NODE%" goto standard
@@ -20,3 +23,7 @@ exit /b
 :failed
 popd
 pause
+exit /b 1
+:failedroot
+pause
+exit /b 1

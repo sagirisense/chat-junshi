@@ -1,0 +1,16 @@
+[package]
+name = "junshi-wgc"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+windows-capture = "=2.0.1"
+
+[profile.release]
+panic = "abort"
+lto = true
+strip = true
