@@ -13,6 +13,27 @@ import (
 func isFile(path string) bool { info, err := os.Stat(path); return err == nil && !info.IsDir() }
 
 func Command() ([]string, error) {
+	home, _ := os.UserHomeDir()
+	local := os.Getenv("LOCALAPPDATA")
+	if local == "" {
+		local = filepath.Join(home, "AppData", "Local")
+	}
+	// Prefer the desktop client's bundled CLI over npm/PATH installations.
+	binaries, _ := filepath.Glob(filepath.Join(local, "OpenAI", "Codex", "bin", "*", "codex.exe"))
+	type desktopBinary struct {
+		path string
+		info os.FileInfo
+	}
+	available := []desktopBinary{}
+	for _, path := range binaries {
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			available = append(available, desktopBinary{path, info})
+		}
+	}
+	sort.SliceStable(available, func(i, j int) bool { return available[i].info.ModTime().After(available[j].info.ModTime()) })
+	if len(available) > 0 {
+		return []string{available[0].path, "app-server"}, nil
+	}
 	shim, _ := exec.LookPath("codex.cmd")
 	if shim == "" {
 		shim, _ = exec.LookPath("codex")
@@ -33,14 +54,6 @@ func Command() ([]string, error) {
 			sort.Sort(sort.Reverse(sort.StringSlice(versions)))
 			candidates = append(candidates, versions...)
 		}
-
-		binaries, _ := filepath.Glob(filepath.Join(local, "OpenAI", "Codex", "bin", "*", "codex.exe"))
-		sort.SliceStable(binaries, func(i, j int) bool {
-			a, ea := os.Stat(binaries[i])
-			b, eb := os.Stat(binaries[j])
-			return ea == nil && (eb != nil || a.ModTime().After(b.ModTime()))
-		})
-		candidates = append(candidates, binaries...)
 		for _, path := range candidates {
 			if isFile(path) {
 				shim = path

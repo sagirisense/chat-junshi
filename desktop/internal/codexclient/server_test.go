@@ -146,3 +146,57 @@ func TestDesktopCommandWithoutPATH(t *testing.T) {
 		t.Fatal(command, err)
 	}
 }
+
+func TestDesktopCommandPreferredOverPATH(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "OpenAI", "Codex", "bin", "current", "codex.exe")
+	if err := os.MkdirAll(filepath.Dir(binary), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(binary, []byte("desktop test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	npm := filepath.Join(dir, "npm")
+	if err := os.MkdirAll(npm, 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(npm, "codex.cmd"), []byte("npm test"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", npm)
+	t.Setenv("LOCALAPPDATA", dir)
+	command, err := Command()
+	if err != nil || !strings.EqualFold(command[0], binary) {
+		t.Fatal("PATH shadowed desktop CLI", command, err)
+	}
+}
+
+func TestLiveDesktopModelList(t *testing.T) {
+	if os.Getenv("JUNSHI_TEST_LIVE_CODEX_MODEL_LIST") != "1" {
+		t.Skip("opt-in read-only desktop model-list probe")
+	}
+	command, err := Command()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := Start()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	if err = server.Initialize(ctx, "wechat_junshi"); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := server.Models(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	models := []string{}
+	for _, row := range rows {
+		model, _ := row["model"].(string)
+		models = append(models, model)
+	}
+	t.Logf("CLI=%s; models=%s", command[0], strings.Join(models, ", "))
+}
