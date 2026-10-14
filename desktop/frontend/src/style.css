@@ -193,7 +193,8 @@ details{font-size:11px;color:var(--muted)}summary{display:flex;gap:6px;align-ite
 .sticker-tile>img{height:130px;width:100%;object-fit:contain;background:#fff;border-radius:10px}
 .sticker-tile>span,.sticker-tile>small{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .sticker-actions{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
-.sticker-editor{display:flex;gap:20px;padding:16px;border:1px solid var(--field-border);border-radius:14px}
+.sticker-edit-dialog.modal__dialog{width:min(720px,calc(100vw - 40px));max-width:720px}
+.sticker-editor{display:flex;gap:20px}
 .sticker-editor>img{width:160px;height:160px;object-fit:contain;background:#fff;border-radius:12px}
 .sticker-fields{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
 .sticker-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;margin:8px 0}

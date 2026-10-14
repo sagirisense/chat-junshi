@@ -14,6 +14,7 @@ import (
 type Progress func(stage string, metrics Message, rows []interface{})
 type AnalyzeRequest struct {
 	Packet, Model, Task, SkillPath, Directory string
+	ImageURL                                  string
 	WithMemory, Quick                         bool
 }
 
@@ -147,6 +148,10 @@ func (t *Transport) Analyze(ctx context.Context, input AnalyzeRequest, progress 
 	if input.Quick {
 		params["baseInstructions"] = modelapi.QuickRules
 		params["developerInstructions"] = "只完成本轮回复，不调用工具。"
+		if task == "sticker" {
+			params["baseInstructions"] = modelapi.StickerRules
+			params["developerInstructions"] = "只分析本轮表情图片，不调用工具。"
+		}
 	} else {
 		params["cwd"] = input.Directory
 	}
@@ -164,6 +169,9 @@ func (t *Transport) Analyze(ctx context.Context, input AnalyzeRequest, progress 
 		packet = strings.Replace(packet, "$goutoujunshi", "即时回复任务", 1)
 	}
 	items := []Message{{"type": "text", "text": packet}}
+	if input.ImageURL != "" {
+		items = append(items, Message{"type": "image", "url": input.ImageURL})
+	}
 	if !input.Quick {
 		items = append(items, Message{"type": "skill", "name": "goutoujunshi", "path": input.SkillPath})
 	}

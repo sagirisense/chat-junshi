@@ -11,6 +11,9 @@ import (
 )
 
 func Schema(withMemory, quick bool, task string) map[string]interface{} {
+	if task == "sticker" {
+		return StickerSchema()
+	}
 	text := baseSchemaJSON
 	if withMemory {
 		text = memorySchemaJSON
@@ -162,6 +165,9 @@ func DecodeResult(data map[string]interface{}, protocol, task string, withMemory
 	var trailing interface{}
 	if decoder.Decode(&trailing) != io.EOF {
 		return nil, invalid
+	}
+	if task == "sticker" {
+		return result, ValidateStickerAnalysis(result)
 	}
 	var updates interface{} = []interface{}{}
 	if withMemory {

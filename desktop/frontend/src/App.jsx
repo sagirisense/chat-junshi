@@ -145,6 +145,23 @@ export default function App() {
     if (data) { setStickers(data.stickers); notify('表情标签已保存'); return true }
     return false
   }
+  async function analyzeSticker(id) {
+    if (preview) { notify('演示模式不分析真实素材'); return null }
+    try {
+      return await window.go.main.App.AnalyzeSticker(id, provider, chosenModel, provider === 'custom' ? apiConfig : {})
+    } catch (e) { throw new Error(`${String(e.message || e)}；请确认当前模型支持图片理解`) }
+  }
+  async function transferStickerLibrary(action) {
+    if (preview) { notify('演示模式不导入或导出真实素材'); return }
+    try {
+      if (action === 'export') {
+        if (await window.go.main.App.ExportStickerLibrary()) notify('表情库已导出，包含图片、标签和推荐设置')
+      } else {
+        const result = await window.go.main.App.ImportStickerLibrary()
+        if (result) { await refreshStickers(); notify(`新增 ${result.count} 张，跳过 ${result.skipped} 张重复图片`) }
+      }
+    } catch (e) { setError(String(e.message || e)) }
+  }
   function deleteSticker(row) {
     setConfirmation({ text: `删除本地表情“${row.name}”？`, run: async () => {
       const data = await call('sticker_delete', { id: row.id, confirm: true })
@@ -329,7 +346,7 @@ export default function App() {
       <Tabs.Panel id="chat" className="tab-panel chat-layout">{conversation()}{advice()}</Tabs.Panel>
       <Tabs.Panel id="profile" className="tab-panel">{profiles()}</Tabs.Panel>
       <Tabs.Panel id="memory" className="tab-panel">{memory()}</Tabs.Panel>
-      <Tabs.Panel id="stickers" className="tab-panel"><StickerLibrary stickers={stickers} busy={state.busy} onImport={importStickers} onSave={saveSticker} onDelete={deleteSticker} onCopy={copySticker} /></Tabs.Panel>
+      <Tabs.Panel id="stickers" className="tab-panel"><StickerLibrary stickers={stickers} busy={state.busy} onImport={importStickers} onSave={saveSticker} onDelete={deleteSticker} onCopy={copySticker} onAnalyze={analyzeSticker} onTransfer={transferStickerLibrary} /></Tabs.Panel>
     </Tabs>
     <ProfileDialog open={profileOpen} onClose={closeProfile} state={state} call={call} notify={notify} importedDraft={importedDraft} />
     <Modal isOpen={settings} onOpenChange={setSettings}><Modal.Backdrop variant="blur" className="dialog-backdrop"><Modal.Container placement="center"><Modal.Dialog className="small-dialog model-dialog"><Modal.CloseTrigger /><Modal.Header><Modal.Heading>模型设置</Modal.Heading></Modal.Header><Modal.Body><div className="model-settings">

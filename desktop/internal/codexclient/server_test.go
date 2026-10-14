@@ -39,6 +39,20 @@ func TestFakeServerProcess(t *testing.T) {
 			data, _ := json.Marshal(Message{"id": message["id"], "result": result})
 			fmt.Println(string(data))
 			final := `{"summary":"合成测试","facts":[],"hypotheses":[],"unknowns":[],"recommended_index":0,"recommendation_reason":"测试","candidates":[{"text":"你好","pros":[],"cons":[],"suitable_when":"测试","next_step":"等待"}]}`
+			params, _ := message["params"].(map[string]interface{})
+			schema, _ := params["outputSchema"].(map[string]interface{})
+			props, _ := schema["properties"].(map[string]interface{})
+			if props["tags"] != nil {
+				items, _ := params["input"].([]interface{})
+				if len(items) != 2 {
+					os.Exit(5)
+				}
+				image, _ := items[1].(map[string]interface{})
+				if image["type"] != "image" || image["url"] != "data:image/png;base64,c3ludGhldGlj" {
+					os.Exit(6)
+				}
+				final = `{"name":"晚安","tags":"晚安,困了","suitable":"结束聊天","avoid":"严肃讨论","intimate":false,"intimate_reason":"普通晚安问候，无明显暧昧或越界表达"}`
+			}
 			data, _ = json.Marshal(Message{"method": "item/agentMessage/delta", "params": Message{"threadId": "isolated-thread", "turnId": "synthetic-turn", "delta": final}})
 			fmt.Println(string(data))
 			data, _ = json.Marshal(Message{"method": "item/completed", "params": Message{"threadId": "isolated-thread", "turnId": "synthetic-turn", "item": Message{"type": "agentMessage", "text": final}}})
@@ -126,6 +140,18 @@ func TestAnalyzeIsolationAndReuse(t *testing.T) {
 	}
 	if len(PreviewCandidates(`"candidates"`, "reply")) != 0 || len(PreviewCandidates(`{"candidates":[{"text":"unfinished`, "reply")) != 0 {
 		t.Fatal("repaired incomplete JSON")
+	}
+}
+
+func TestAnalyzeStickerUsesImageAndIndependentSchema(t *testing.T) {
+	t.Setenv("JUNSHI_FAKE_CODEX", "1")
+	transport := &Transport{Start: func() (*Server, error) {
+		return startCommand([]string{os.Args[0], "-test.run=^TestFakeServerProcess$"})
+	}}
+	defer transport.Close()
+	got, err := transport.Analyze(context.Background(), AnalyzeRequest{Packet: "分析图片", Task: "sticker", Quick: true, ImageURL: "data:image/png;base64,c3ludGhldGlj"}, nil)
+	if err != nil || got["tags"] != "晚安,困了" {
+		t.Fatal(got, err)
 	}
 }
 
