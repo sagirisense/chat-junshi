@@ -14,7 +14,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build.ps1 -ModelDi
 
 模型及DLL必须匹配`ocr-source.json`的固定SHA256；`prepare-runtime.ps1`默认也能从旧工作区的`.venv`提取这些文件，不执行Python。可传`-VCRedistDirectory`指定VC143 x64可再分发DLL目录。字典在构建时从v4模型metadata提取；参考实现文件名`ppocr_keys_v5.txt`不表示模型升级。
 
-`build-frontend.ps1`构建界面，`prepare-runtime.ps1`构建原生WGC，`assemble.ps1`只复制声明的运行资产、公开规则及许可证，生成每个文件的SHA256清单并拒绝Python与私有数据。旧`assemble.py`、`fetch-skill.py`和Python测试保留作历史对照，不属于新构建入口。
+`build-frontend.ps1`构建界面，`prepare-runtime.ps1`构建原生WGC，`assemble.ps1`只复制声明的运行资产、公开规则及许可证，生成每个文件的SHA256清单并拒绝Python与私有数据。旧 Python 打包脚本与 PyInstaller 依赖已移除；个人表情整理脚本仍保留，仅操作本机素材，见 [本地表情库](../docs/stickers.md)。
 
 产物为`release/ChatJunshi-Setup-0.1.0-x64.exe`。安装包未签名。
 
