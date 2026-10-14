@@ -109,6 +109,19 @@ func (s *Service) stickerAction(action string, payload Data) (interface{}, error
 		if _, err := store.Import(str(payload, "name"), data); err != nil {
 			return nil, err
 		}
+	case "sticker_export_library":
+		return store.ExportLibrary()
+	case "sticker_import_library":
+		data, ok := payload["data"].([]byte)
+		if !ok {
+			return nil, errors.New("表情库数据无效")
+		}
+		added, skipped, err := store.ImportLibrary(data)
+		if err != nil {
+			return nil, err
+		}
+		s.invalidate()
+		return Data{"count": added, "skipped": skipped}, nil
 	case "stickers":
 		rows, err := store.List()
 		if err != nil {

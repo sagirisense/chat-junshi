@@ -1,12 +1,80 @@
 package main
 
 import (
+	"context"
+	"encoding/base64"
 	"errors"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
+	"io"
+	"junshi-desktop/internal/codexclient"
+	"junshi-desktop/internal/modelapi"
 	"junshi-desktop/internal/stickers"
 	"os"
 	"path/filepath"
 )
+
+func (a *App) AnalyzeSticker(id, provider, model string, config modelapi.Config) (interface{}, error) {
+	store, err := a.stickerStore()
+	if err != nil {
+		return nil, err
+	}
+	data, err := store.Read(id)
+	if err != nil {
+		return nil, err
+	}
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if provider == "custom" {
+		return (modelapi.Client{}).AnalyzeSticker(ctx, config, model, data)
+	}
+	if provider != "codex" {
+		return nil, errors.New("模型接入方式无效")
+	}
+	transport := &codexclient.Transport{}
+	defer transport.Close()
+	return transport.Analyze(ctx, codexclient.AnalyzeRequest{Task: "sticker", Quick: true, Model: model, Packet: "请分析这张表情图片，按要求返回中文标签 JSON。", ImageURL: "data:image/png;base64," + base64.StdEncoding.EncodeToString(data)}, nil)
+}
+
+func (a *App) ExportStickerLibrary() (bool, error) {
+	if _, err := a.stickerStore(); err != nil {
+		return false, err
+	}
+	result, err := a.service.Dispatch("sticker_export_library", nil)
+	if err != nil {
+		return false, err
+	}
+	path, err := runtime.SaveFileDialog(a.ctx, runtime.SaveDialogOptions{Title: "导出表情库", DefaultFilename: "chat-junshi-stickers.zip", Filters: []runtime.FileFilter{{DisplayName: "表情库 ZIP", Pattern: "*.zip"}}})
+	if err != nil || path == "" {
+		return false, err
+	}
+	if filepath.Ext(path) == "" {
+		path += ".zip"
+	}
+	err = os.WriteFile(path, result.([]byte), 0600)
+	return err == nil, err
+}
+
+func (a *App) ImportStickerLibrary() (interface{}, error) {
+	if _, err := a.stickerStore(); err != nil {
+		return nil, err
+	}
+	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{Title: "导入表情库", Filters: []runtime.FileFilter{{DisplayName: "本工具导出的表情库 ZIP", Pattern: "*.zip"}}})
+	if err != nil || path == "" {
+		return nil, err
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	data, err := io.ReadAll(io.LimitReader(f, stickers.MaxArchiveBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	return a.service.Dispatch("sticker_import_library", map[string]interface{}{"data": data})
+}
 
 func (a *App) stickerStore() (stickers.Store, error) {
 	if a.startError != nil {

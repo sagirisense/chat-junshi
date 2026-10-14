@@ -21,7 +21,7 @@ func (s *Service) Dispatch(action string, payload Data) (interface{}, error) {
 		event = s.snapshot()
 		result = event
 	}
-	if err == nil && (action == "sticker_import" || action == "sticker_update" || action == "sticker_delete") {
+	if err == nil && (action == "sticker_import" || action == "sticker_update" || action == "sticker_delete" || action == "sticker_import_library") {
 		event = s.snapshot()
 	}
 	s.mu.Unlock()
@@ -33,7 +33,7 @@ func (s *Service) Dispatch(action string, payload Data) (interface{}, error) {
 
 func (s *Service) dispatch(action string, payload Data) (interface{}, error) {
 	switch action {
-	case "stickers", "sticker_update", "sticker_delete", "sticker_import":
+	case "stickers", "sticker_update", "sticker_delete", "sticker_import", "sticker_export_library", "sticker_import_library":
 		return s.stickerAction(action, payload)
 	case "capture":
 		if s.collector == nil {

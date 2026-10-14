@@ -140,12 +140,18 @@ func (s Store) Import(name string, data []byte) (Sticker, error) {
 	err = s.save(append(rows, row))
 	return row, err
 }
-func (s Store) Update(row Sticker) error {
+func Validate(row Sticker) error {
 	if len([]rune(row.Name)) > 80 || strings.TrimSpace(row.Name) == "" || len([]rune(row.Tags)) > 200 || len([]rune(row.Suitable)) > 300 || len([]rune(row.Avoid)) > 300 {
 		return errors.New("名称或标签长度无效")
 	}
 	if row.Enabled && strings.TrimSpace(row.Tags) == "" {
 		return errors.New("请先填写标签，再启用 AI 推荐")
+	}
+	return nil
+}
+func (s Store) Update(row Sticker) error {
+	if err := Validate(row); err != nil {
+		return err
 	}
 	rows, err := s.List()
 	if err != nil {
