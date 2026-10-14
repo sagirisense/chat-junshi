@@ -18,6 +18,12 @@ func Schema(withMemory, quick bool, task string) map[string]interface{} {
 	var schema map[string]interface{}
 	_ = json.Unmarshal([]byte(text), &schema)
 	props := schema["properties"].(map[string]interface{})
+	candidateFields := props["candidates"].(map[string]interface{})["items"].(map[string]interface{})
+	fields := candidateFields["properties"].(map[string]interface{})
+	fields["sticker_id"] = map[string]interface{}{"type": "string"}
+	fields["sticker_reason"] = map[string]interface{}{"type": "string", "maxLength": 300, "description": "有图时说明与候选回复的搭配理由；目录有素材但不选图时，说明缺少匹配素材或当前语境更适合文字的具体原因。"}
+	fields["send_order"] = map[string]interface{}{"type": "string", "enum": []string{"none", "text_first", "image_first", "image_only"}}
+	candidateFields["required"] = append(candidateFields["required"].([]interface{}), "sticker_id", "sticker_reason", "send_order")
 	if quick {
 		for _, field := range []string{"facts", "hypotheses", "unknowns"} {
 			props[field].(map[string]interface{})["maxItems"] = 3

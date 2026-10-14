@@ -38,3 +38,6 @@ Go OCR 使用 gopaddleocr、onnxruntime_go；SQLite 使用 modernc.org/sqlite。
 及 licenses/RapidOCR-LICENSE；ONNX Runtime 的许可与第三方声明随运行资产保留。
 VC 运行库的再分发清单和第三方声明见 licenses/Microsoft-VC-Redist.txt
 及 licenses/Microsoft-VC-ThirdPartyNotices.txt，使用遵守其发行版许可。
+
+用户自行导入的表情图片及本机来源记录不随本项目分发。项目 MIT 许可证不涵盖第三方图片，
+素材使用及再分发须遵守各自权利人的授权条件。前端预览图由程序绘制，仅用于虚构演示。
