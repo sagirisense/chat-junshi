@@ -2,6 +2,8 @@ package main
 
 import (
 	"embed"
+	"junshi-desktop/internal/diagnostics"
+	"time"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -35,6 +37,7 @@ func main() {
 	})
 
 	if err != nil {
+		diagnostics.Record("wails.run", time.Time{}, err)
 		println("Error:", err.Error())
 	}
 }

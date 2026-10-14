@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"junshi-desktop/internal/capture"
+	"junshi-desktop/internal/diagnostics"
 	"junshi-desktop/internal/evidence"
 	"time"
 )
@@ -20,6 +21,9 @@ func (s *Service) HandleCapture(event CaptureEvent) error {
 		return nil
 	}
 	err := s.handleCapture(event)
+	if err != nil {
+		diagnostics.Record("capture.handle", time.Time{}, err)
+	}
 	state := s.snapshot()
 	s.mu.Unlock()
 	if s.Emit != nil {
@@ -51,6 +55,7 @@ func (s *Service) handleCapture(event CaptureEvent) error {
 			s.Status = "OCR 已准备好，打开微信单聊后开启采集"
 		}
 	case "dead":
+		diagnostics.Record("capture.dead", time.Time{}, errors.New("capture failed"))
 		s.OCRReady = false
 		if s.Capturing {
 			s.Capturing = false

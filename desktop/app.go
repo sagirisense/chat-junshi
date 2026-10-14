@@ -7,6 +7,7 @@ import (
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 	"io"
 	"junshi-desktop/internal/codexclient"
+	"junshi-desktop/internal/diagnostics"
 	"junshi-desktop/internal/modelapi"
 	"junshi-desktop/internal/service"
 	"os"
@@ -40,6 +41,8 @@ func projectRoot() (string, error) {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+	started := time.Now()
+	defer func() { diagnostics.Record("startup", started, a.startError) }()
 	executable, _ := os.Executable()
 	assets := filepath.Join(filepath.Dir(executable), "runtime")
 	var root string
@@ -59,7 +62,12 @@ func (a *App) startup(ctx context.Context) {
 		}
 		assets = filepath.Join(root, ".go-cache", "runtime")
 	}
-	if override:=os.Getenv("JUNSHI_DATA_ROOT"); override!="" { root=override }
+	if override := os.Getenv("JUNSHI_DATA_ROOT"); override != "" {
+		root = override
+	}
+	if err := diagnostics.Init(root); err != nil {
+		println("无法创建本地诊断日志")
+	}
 	if err := service.BackupBeforeMigration(root); err != nil {
 		a.startError = err
 		return
@@ -76,7 +84,18 @@ func (a *App) startup(ctx context.Context) {
 	host.ConfigureCapture(filepath.Join(assets, "models"), filepath.Join(assets, "onnxruntime.dll"), filepath.Join(assets, "junshi_wgc.dll"))
 }
 
-func (a *App) Call(action string, payload map[string]interface{}) (interface{}, error) {
+func (a *App) Call(action string, payload map[string]interface{}) (result interface{}, callErr error) {
+	started := time.Now()
+	defer func() {
+		if action != "state" || callErr != nil {
+			stage := "app.call.other"
+			switch action {
+			case "models", "analyze", "capture", "state", "sticker_import", "sticker_update", "sticker_delete", "import_chat", "bind_profile", "profile", "select":
+				stage = "app.call." + action
+			}
+			diagnostics.Record(stage, started, callErr)
+		}
+	}()
 	if action == "models" && payload["provider"] != "custom" {
 		ctx := a.ctx
 		if ctx == nil {
@@ -188,6 +207,7 @@ func (a *App) WindowAction(action string) {
 	}
 }
 func (a *App) shutdown(ctx context.Context) {
+	defer diagnostics.Record("shutdown", time.Now(), nil)
 	if a.service != nil {
 		a.service.Close()
 	}

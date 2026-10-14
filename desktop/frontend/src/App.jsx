@@ -2,11 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Button, Input, Label, ListBox, Select, Modal, Tabs, TextArea, TextField } from '@heroui/react'
 import { Download, Upload, Brain, Check, ChevronDown, ChevronRight, Copy, HeartHandshake, MessageCircle, Minus, Monitor, Moon, Pause, Pencil, Pin, Play, RotateCcw, Settings2, ShieldCheck, Sparkles, Square, Sun, Trash2, X } from 'lucide-react'
 import ProfileDialog from './components/ProfileDialog'
+import StickerLibrary from './components/StickerLibrary'
+import StickerReply from './components/StickerReply'
 import { providers } from './providers'
-import { goalOptions, initialState, previewState, profileGroups, scopeLabels } from './domain'
+import { goalOptions, initialState, previewState, previewStickers, profileGroups, scopeLabels } from './domain'
 
 const preview = new URLSearchParams(location.search).has('preview')
-const pages = [['chat', '回复工作台'], ['profile', '关系档案'], ['memory', '长期记忆']]
+const pages = [['chat', '回复工作台'], ['profile', '关系档案'], ['memory', '长期记忆'], ['stickers', '表情库']]
 const themeNames = { light: '浅色', dark: '深色', system: '跟随系统' }
 function savedTheme() { try { return localStorage.getItem('junshi-theme') || 'system' } catch { return 'system' } }
 function messageTimeLabel(message) {
@@ -70,6 +72,9 @@ export default function App() {
   const [interestsByTitle, setInterestsByTitle] = useState({})
   const [polishStyle, setPolishStyle] = useState('自然一点')
   const [useHotspots, setUseHotspots] = useState(false)
+  const [stickers, setStickers] = useState(() => preview ? previewStickers : [])
+  const [stickerMode, setStickerMode] = useState('natural')
+  const [allowIntimate, setAllowIntimate] = useState(false)
   const draft = drafts[state.title] || ''
   const interests = interestsByTitle[state.title] || ''
   const [customGoal, setCustomGoal] = useState(() => !!state.profile.goal && !goalOptions.includes(state.profile.goal))
@@ -94,6 +99,7 @@ export default function App() {
     const next = { ...previous, ...data }
     stateRef.current = next
     setState(next)
+    if (next.title !== previous.title) setAllowIntimate(false)
     if (next.title !== previous.title || next.profile.goal !== previous.profile.goal) {
       setGoal(next.profile.goal || '')
       setCustomGoal(!!next.profile.goal && !goalOptions.includes(next.profile.goal))
@@ -112,6 +118,39 @@ export default function App() {
     } catch (e) { setError(String(e.message || e)); return null }
   }, [merge, notify])
 
+  const refreshStickers = useCallback(async () => {
+    const data = await call('stickers')
+    if (data) setStickers(data.stickers)
+  }, [call])
+  useEffect(() => { if (!preview) refreshStickers() }, [refreshStickers])
+  async function copySticker(id) {
+    try {
+      if (preview) { notify('演示模式不复制真实素材'); return }
+      await window.go.main.App.CopySticker(id)
+      notify('图片已复制，请到微信粘贴并确认发送')
+    } catch (e) { setError(String(e.message || e)) }
+  }
+  async function importStickers() {
+    if (preview) { notify('演示模式不导入素材'); return }
+    try {
+      const result = await window.go.main.App.ImportStickers()
+      await refreshStickers()
+      notify(`已处理 ${result.count} 张图片；请核对标签并启用推荐`)
+      if (result.failures.length) setError(result.failures.join('；'))
+    } catch (e) { setError(String(e.message || e)) }
+  }
+  async function saveSticker(row) {
+    const { preview: imagePreview, ...metadata } = row
+    const data = await call('sticker_update', metadata)
+    if (data) { setStickers(data.stickers); notify('表情标签已保存'); return true }
+    return false
+  }
+  function deleteSticker(row) {
+    setConfirmation({ text: `删除本地表情“${row.name}”？`, run: async () => {
+      const data = await call('sticker_delete', { id: row.id, confirm: true })
+      if (data) setStickers(data.stickers)
+    } })
+  }
   useEffect(() => {
     if (preview) return
     if (!window.go?.main?.App || !window.runtime?.EventsOnMultiple) { setError('桌面运行时尚未连接，请从完整项目的 run.bat 启动'); return }
@@ -252,17 +291,19 @@ export default function App() {
         </div>}
         </div>
         <div className="generation-actions">
-        <Button className="violet-button generate-button" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked || (assistanceMode === 'polish' && !draft.trim())} isPending={state.busy} onPress={() => call('analyze', { task: assistanceMode, draft, style: polishStyle, interests, use_hotspots: useHotspots, mode: 'quick', model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Sparkles size={18} />{state.busy ? '正在生成…' : assistanceMode === 'polish' ? '优化这段话' : assistanceMode === 'topics' ? '推荐话题' : '快速回复'}</Button>
-        {assistanceMode === 'reply' && <Button variant="ghost" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked} onPress={() => call('analyze', { mode: 'deep', model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Brain size={16} />深入分析</Button>}
+        <div className="sticker-controls"><Select className="goal-select sticker-mode-select" aria-label="搭配表情模式" selectedKey={stickerMode} isDisabled={state.busy} onSelectionChange={value => { setStickerMode(String(value)); call('invalidate_assistance', { title: state.title }) }}><Label>搭配表情</Label><Select.Trigger><Select.Value /><Select.Indicator /></Select.Trigger><Select.Popover placement="bottom start" className="styled-select-menu"><ListBox>{[['none', '纯文字'], ['natural', '自然搭配'], ['prefer', '优先表情']].map(([id, name]) => <ListBox.Item key={id} id={id} textValue={name}><Label>{name}</Label><ListBox.ItemIndicator /></ListBox.Item>)}</ListBox></Select.Popover></Select>{stickerMode !== 'none' && <><span>{stickers.filter(row => row.enabled && (!row.intimate || allowIntimate)).length} 张可推荐</span><label className="check-row"><input type="checkbox" checked={allowIntimate} disabled={state.busy} onChange={event => { setAllowIntimate(event.target.checked); call('invalidate_assistance', { title: state.title }) }} />允许亲密表情</label><Button size="sm" variant="ghost" onPress={() => setPage('stickers')}>管理表情</Button></>}</div>
+        <Button className="violet-button generate-button" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked || (assistanceMode === 'polish' && !draft.trim())} isPending={state.busy} onPress={() => call('analyze', { task: assistanceMode, draft, style: polishStyle, interests, use_hotspots: useHotspots, sticker_mode: stickerMode, allow_intimate: allowIntimate, mode: 'quick', model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Sparkles size={18} />{state.busy ? '正在生成…' : assistanceMode === 'polish' ? '优化这段话' : assistanceMode === 'topics' ? '推荐话题' : '快速回复'}</Button>
+        {assistanceMode === 'reply' && <Button variant="ghost" fullWidth isDisabled={state.busy || !state.confirmed || state.blocked} onPress={() => call('analyze', { mode: 'deep', sticker_mode: stickerMode, allow_intimate: allowIntimate, model: chosenModel, goal, provider, api: provider === 'custom' ? apiConfig : {} })}><Brain size={16} />深入分析</Button>}
         </div>
         <p className="status-line" role="status">{state.status}</p>
         {assistanceMode === 'topics' && state.assistance_notice && <p className="status-line">{state.assistance_notice}</p>}
         <p className="status-line clock-line">北京时间：{clock.toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}</p>
         {!!state.reply_metrics?.total_s && <details className="status-line"><summary>本次用时 {state.reply_metrics.total_s} 秒</summary><p>连接准备：{state.reply_metrics.initialize_s ?? '—'} 秒 · 会话就绪：{state.reply_metrics.thread_ready_s ?? '—'} 秒 · 首条候选：{state.reply_metrics.first_candidate_s ?? '—'} 秒</p></details>}
+        {state.result?.sticker_notice && !state.busy && <p className="status-line" role="status">{state.result.sticker_notice}</p>}
       </div>
       <div className="advice-scroll">{state.busy ? state.reply_preview?.length ? <><p className="status-line">候选预览，完整结果核对后可复制</p>{state.reply_preview.map((candidate, index) => <article className="reply-card" key={index}><p className="reply-text">{candidate.text || '建议暂时不回复'}</p></article>)}</> : <div className="empty-state thinking"><Sparkles size={30} /><h3>正在整理适合你的表达</h3><p>{state.status}</p></div> : !state.result || !resultMatches ? <div className="empty-state"><Sparkles size={30} /><h3>{assistanceMode === 'polish' ? '先写下你真正想说的话' : assistanceMode === 'topics' ? '从对方聊过的事，自然开个头' : '不用急着想一句完美回复'}</h3><p>{assistanceMode === 'polish' ? '保留草稿原意，结合当前关系和时间调整表达。' : assistanceMode === 'topics' ? '根据历史与兴趣找话题；资讯不合适时不硬凑热点。' : '核对说话人后，获取自然的表达和各自的优点与代价。'}</p></div> : <>
         <details className="judgment judgment-compact"><summary><MessageCircle size={17} /><span>{state.result.summary}</span><ChevronDown size={14} /></summary><div className="judgment-body"><p>{state.result.recommendation_reason}</p>{[['事实', 'facts'], ['推测', 'hypotheses'], ['未知', 'unknowns']].map(([label, key]) => <div key={key}><b>{label}</b>{state.result[key].map((item, index) => <p key={index}>{item}</p>)}</div>)}</div></details>
-        {state.result.candidates.map((candidate, index) => <article key={index} className={`reply-card ${index === state.result.recommended_index ? 'recommended' : ''}`}><div className="reply-topline"><span className={index === state.result.recommended_index ? 'recommend-badge' : 'alternative-label'}>{index === state.result.recommended_index ? '推荐' : '另一种表达'}</span><Button variant="secondary" size="sm" isDisabled={!candidate.text} onPress={() => copy(candidate.text)}><Copy size={13} />复制</Button></div>{candidate.topic_title && <h3 className="topic-title">{candidate.topic_title}</h3>}{candidate.basis && <p className="topic-basis">{{ history: '历史话题', preference: '兴趣话题', hotspot: '近期资讯', general: '探索性话题' }[candidate.basis]} · {{ confirmed: '明确兴趣', mentioned: '只是提过', inferred: '暂定推测', unknown: '喜好未知' }[candidate.preference_level]}{candidate.evidence_ids?.length ? ` · 消息 ${candidate.evidence_ids.map(id => `#${id}`).join('、')}` : ''}</p>}<p className="reply-text">{candidate.text || '建议暂时不回复'}</p>{candidate.sources?.length > 0 && <div className="topic-sources">{candidate.sources.map(source => <a key={source.id} href={source.url} target="_blank" rel="noopener noreferrer" onClick={event => { if (!preview && window.runtime?.BrowserOpenURL) { event.preventDefault(); window.runtime.BrowserOpenURL(source.url) } }}>{source.title} · {source.publisher} · {new Date(source.published_at).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}</a>)}</div>}<div className="tradeoffs"><div className="pro"><Check size={13} /><span><b>优点：</b>{candidate.pros.join('，')}</span></div><div className="con"><ShieldCheck size={13} /><span><b>代价：</b>{candidate.cons.join('，')}</span></div></div><details><summary>适用场景与后续<ChevronRight size={12} /></summary><p>{candidate.suitable_when}</p><p>{candidate.next_step}</p></details></article>)}
+        {state.result.candidates.map((candidate, index) => <article key={index} className={`reply-card ${index === state.result.recommended_index ? 'recommended' : ''}`}><div className="reply-topline"><span className={index === state.result.recommended_index ? 'recommend-badge' : 'alternative-label'}>{index === state.result.recommended_index ? '推荐' : '另一种表达'}</span><Button variant="secondary" size="sm" isDisabled={!candidate.text} onPress={() => copy(candidate.text)}><Copy size={13} />复制文字</Button></div>{candidate.topic_title && <h3 className="topic-title">{candidate.topic_title}</h3>}{candidate.basis && <p className="topic-basis">{{ history: '历史话题', preference: '兴趣话题', hotspot: '近期资讯', general: '探索性话题' }[candidate.basis]} · {{ confirmed: '明确兴趣', mentioned: '只是提过', inferred: '暂定推测', unknown: '喜好未知' }[candidate.preference_level]}{candidate.evidence_ids?.length ? ` · 消息 ${candidate.evidence_ids.map(id => `#${id}`).join('、')}` : ''}</p>}<p className="reply-text">{candidate.text || (candidate.sticker ? '建议用表情回应' : '建议暂时不回复')}</p><StickerReply candidate={candidate} stickers={stickers} mode={stickerMode} allowIntimate={allowIntimate} onCopy={copySticker} />{candidate.sources?.length > 0 && <div className="topic-sources">{candidate.sources.map(source => <a key={source.id} href={source.url} target="_blank" rel="noopener noreferrer" onClick={event => { if (!preview && window.runtime?.BrowserOpenURL) { event.preventDefault(); window.runtime.BrowserOpenURL(source.url) } }}>{source.title} · {source.publisher} · {new Date(source.published_at).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}</a>)}</div>}<div className="tradeoffs"><div className="pro"><Check size={13} /><span><b>优点：</b>{candidate.pros.join('，')}</span></div><div className="con"><ShieldCheck size={13} /><span><b>代价：</b>{candidate.cons.join('，')}</span></div></div><details><summary>适用场景与后续<ChevronRight size={12} /></summary><p>{candidate.suitable_when}</p><p>{candidate.next_step}</p></details></article>)}
       </>}</div>
       <div className="advice-footer"><ShieldCheck size={13} />本地识别 · 分析时提交文字 · 发送由你决定</div>
     </section>
@@ -288,6 +329,7 @@ export default function App() {
       <Tabs.Panel id="chat" className="tab-panel chat-layout">{conversation()}{advice()}</Tabs.Panel>
       <Tabs.Panel id="profile" className="tab-panel">{profiles()}</Tabs.Panel>
       <Tabs.Panel id="memory" className="tab-panel">{memory()}</Tabs.Panel>
+      <Tabs.Panel id="stickers" className="tab-panel"><StickerLibrary stickers={stickers} busy={state.busy} onImport={importStickers} onSave={saveSticker} onDelete={deleteSticker} onCopy={copySticker} /></Tabs.Panel>
     </Tabs>
     <ProfileDialog open={profileOpen} onClose={closeProfile} state={state} call={call} notify={notify} importedDraft={importedDraft} />
     <Modal isOpen={settings} onOpenChange={setSettings}><Modal.Backdrop variant="blur" className="dialog-backdrop"><Modal.Container placement="center"><Modal.Dialog className="small-dialog model-dialog"><Modal.CloseTrigger /><Modal.Header><Modal.Heading>模型设置</Modal.Heading></Modal.Header><Modal.Body><div className="model-settings">

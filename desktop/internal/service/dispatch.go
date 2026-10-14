@@ -21,6 +21,9 @@ func (s *Service) Dispatch(action string, payload Data) (interface{}, error) {
 		event = s.snapshot()
 		result = event
 	}
+	if err == nil && (action == "sticker_import" || action == "sticker_update" || action == "sticker_delete") {
+		event = s.snapshot()
+	}
 	s.mu.Unlock()
 	if event != nil && s.Emit != nil {
 		s.Emit(event)
@@ -30,6 +33,8 @@ func (s *Service) Dispatch(action string, payload Data) (interface{}, error) {
 
 func (s *Service) dispatch(action string, payload Data) (interface{}, error) {
 	switch action {
+	case "stickers", "sticker_update", "sticker_delete", "sticker_import":
+		return s.stickerAction(action, payload)
 	case "capture":
 		if s.collector == nil {
 			return nil, errors.New("采集资源尚未准备好，请检查安装包")

@@ -71,6 +71,25 @@ func ValidateResult(result map[string]interface{}, task string) error {
 			return errors.New("候选结构无效")
 		}
 		fields := []string{"text", "pros", "cons", "suitable_when", "next_step"}
+		if _, present := row["sticker_id"]; present {
+			fields = append(fields, "sticker_id", "sticker_reason", "send_order")
+			id, valid := row["sticker_id"].(string)
+			if !valid {
+				return errors.New("表情 ID 无效")
+			}
+			reason, valid := row["sticker_reason"].(string)
+			if !valid || (id != "" && strings.TrimSpace(reason) == "") || len([]rune(reason)) > 300 {
+				return errors.New("表情理由无效")
+			}
+			order, valid := row["send_order"].(string)
+			if !valid || !contains([]string{"none", "text_first", "image_first", "image_only"}, order) || (id == "") != (order == "none") {
+				return errors.New("表情发送顺序无效")
+			}
+			text, _ := row["text"].(string)
+			if order == "image_only" && text != "" || id != "" && order != "image_only" && strings.TrimSpace(text) == "" {
+				return errors.New("表情与文字不匹配")
+			}
+		}
 		if task == "topics" {
 			fields = append(fields, "topic_title", "basis", "evidence_ids", "source_ids", "preference_level")
 			if title, ok := row["topic_title"].(string); !ok || strings.TrimSpace(title) == "" {

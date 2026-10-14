@@ -14,6 +14,11 @@ export const profileGroups = [
 ]
 export const scopeLabels = { user: '用户档案', object: '对象档案', relationship: '关系状态', event: '关键事件', hypothesis: '暂定推测' }
 
+export const previewStickers = ['收到', '晚安', '加油'].map((name, index) => ({
+  id: `demo-sticker-${index}`, name: `演示表情 · ${name}`, tags: name, suitable: '虚构演示', avoid: '仅用于界面预览', license: '程序绘制的演示图', source: '', enabled: true, intimate: false,
+  preview: `data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="180" height="180"><rect width="180" height="180" rx="20" fill="#fff7ed"/><ellipse cx="90" cy="75" rx="48" ry="40" fill="#ffe4b5"/><circle cx="74" cy="70" r="4"/><circle cx="106" cy="70" r="4"/><path d="M78 87 Q90 99 102 87" fill="none" stroke="#4b382e" stroke-width="3"/><text x="90" y="145" text-anchor="middle" font-family="sans-serif" font-size="24" fill="#4b382e">${name}</text></svg>`)}`,
+}))
+
 export function previewState() {
   return {
     ...initialState, title: '小林', active_title: '小林', sessions: ['小林', '阿远'],
@@ -32,7 +37,7 @@ export function previewState() {
       hypotheses: ['可能更需要轻松的陪伴，也可能只是想休息'], unknowns: ['是否愿意继续聊天'], recommended_index: 0,
       candidates: [
         { text: '那今晚给沙发打工，别给自己加班了哈哈', pros: ['轻松承接', '不催回复'], cons: ['不主动推进话题'], suitable_when: '你们平时会开轻松的玩笑', next_step: '她继续接梗就顺着聊；没回就让她休息' },
-        { text: '今晚的任务就是好好躺着', pros: ['简短自然'], cons: ['话题可能结束'], suitable_when: '你想温和收尾', next_step: '今晚不追问，之后自然联系' },
+        { text: '今晚的任务就是好好躺着', pros: ['简短自然'], cons: ['话题可能结束'], suitable_when: '你想温和收尾', next_step: '今晚不追问，之后自然联系', sticker: previewStickers[1], sticker_reason: '轻松收尾，让对方安心休息', send_order: 'text_first' },
         { text: '那就歇着，明天再聊', pros: ['留出空间'], cons: ['暂时收尾'], suitable_when: '对方明显需要休息', next_step: '之后找合适的时机联系' },
       ],
     },

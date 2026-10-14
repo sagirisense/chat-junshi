@@ -68,7 +68,7 @@ func TestMemoryAndTopicSchema(t *testing.T) {
 	schema := Schema(true, true, "topics")
 	props := schema["properties"].(map[string]interface{})
 	candidate := props["candidates"].(map[string]interface{})["items"].(map[string]interface{})
-	if len(candidate["required"].([]interface{})) != 10 || props["memory_updates"] == nil {
+	if len(candidate["required"].([]interface{})) != 13 || props["memory_updates"] == nil {
 		t.Fatal(schema)
 	}
 	if len(Schema(false, false, "reply")["properties"].(map[string]interface{})) != 7 {
