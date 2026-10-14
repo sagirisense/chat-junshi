@@ -28,7 +28,7 @@
 
 ## 源码环境与安装
 
-需要 Windows 10 1903+ / 11、WebView2、Go 1.25+（启用CGo）、MinGW、Wails 2、Rust GNU工具链，以及 Node 20.19+ 或 22.12+。Python仅用于可选的旧实现兼容对照测试。
+需要 Windows 10 1903+ / 11、WebView2、Go 1.25+（启用CGo）、MinGW、Wails 2、Rust GNU工具链，以及 Node 20.19+ 或 22.12+。Python仅用于可选的算法/旧库对照测试和个人表情整理工具，应用运行及安装构建不执行Python。
 
 源码运行可使用用户安装的 [goutoujunshi · 狗头军师 Skill](https://github.com/shengjidaguai-china/goutoujunshi)，通常位于 `%USERPROFILE%\.codex\skills\goutoujunshi`。安装包只包含固定公开版本的规则和参考；长期记忆由Go实现，兼容旧SQLite表，不再执行记忆脚本。
 
@@ -71,7 +71,7 @@ OCR 会检查气泡是否被消息区上下边缘截断，并检查可见文字�
 
 回复工作台默认使用“快速回复”：保留所选模型，直接提供精简的即时回复规则、当前对象档案及已启用记忆，减少临时读取 Skill 的等待。Codex 通道复用服务进程和模型列表，每轮仍创建独立的临时会话；模型支持时使用低思考强度。候选生成过程中可以预览，完整结果校验后才能复制。需要完整关系判断时选择“深入分析”，沿用原有 Skill 流程。
 
-完成后可以展开“本次用时”查看连接准备、会话就绪、首条候选和总耗时；这些计时仅保留在本次运行的内存中。运行 `.venv\Scripts\python.exe tests\benchmark_reply.py` 可使用固定虚构聊天比较原流程与快速流程，结果保存到 `tests/reply-benchmark.json`，不使用微信原文或用户档案。单次测试受网络和服务负载影响，不代表固定回复时长。
+完成后可以展开“本次用时”查看连接准备、会话就绪、首条候选和总耗时；这些计时仅保留在本次运行的内存中。单次生成受网络和服务负载影响，不代表固定回复时长。
 
 1. 打开微信单聊，保持窗口未最小化；点击顶部“开启采集”，也可导入本工具导出的聊天 JSON。
 2. 首次遇到对象时按需建档。未知项留空，可先处理眼前回复。
@@ -117,11 +117,11 @@ Codex 模式原生调用 Skill；自定义 API 模式读取本地 Skill 及回�
 ## 开发与验证
 
 ```powershell
-.venv\Scripts\python.exe -m unittest discover -s tests
 cd desktop
 go test ./...
-cd frontend
-npm run build
+go vet ./...
+cd ..
+powershell -NoProfile -ExecutionPolicy Bypass -File packaging/build-frontend.ps1
 ```
 
 API 测试使用本机模拟服务和虚构数据，不需要真实密钥。前端可用 `npm run dev` 和 `/?preview` 查看虚构数据预览；桌面开发使用 `wails dev`。
@@ -129,6 +129,8 @@ API 测试使用本机模拟服务和虚构数据，不需要真实密钥。前�
 测试覆盖身份确认、会话隔离、纠错、导入导出、记忆同意与隔离、旧建议作废、API 三协议解析、模型列表，以及无终端 PATH 时定位 Codex。构建成功不代表每个微信版本、DPI、模型或提供商都已通过真实联调。
 
 欢迎参考 [参与开发](CONTRIBUTING.md)。
+
+旧 Python 应用、专属测试和打包路径已移除；删除依据与保留工具见 [Python 清理检查](docs/python-cleanup.md)。旧聊天 JSON、SQLite 兼容读取及首次迁移备份仍由 Go 实现。
 
 ## 引用、参考与致谢
 

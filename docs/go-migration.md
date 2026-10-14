@@ -1,8 +1,8 @@
 # Go 迁移状态与验收
 
-## 当前实现（2026-10-13）
+## 当前实现（2026-10-14）
 
-Wails 已直接调用 Go 业务服务，不再启动 Python 子进程或使用 Python JSONL 中转。React 保留原操作协议，安装包不包含 Python 运行时或脚本。旧 Python 实现和测试保留作兼容性对照。
+Wails 已直接调用 Go 业务服务，不再启动 Python 子进程或使用 Python JSONL 中转。React 保留原操作协议，安装包不包含 Python 运行时或脚本。确认生产入口及构建引用后，旧 Python 应用与专属测试已移除，保留独立工具和 Go 可选对照测试，见 [Python 清理检查](python-cleanup.md)。旧数据兼容及备份逻辑仍保留。
 
 | 模块 | 当前实现 |
 | --- | --- |
@@ -23,6 +23,8 @@ Go 检测代码改编自 Apache-2.0 的 [gopaddleocr](https://github.com/multipp
 WGC 使用 MIT 的 windows-capture 2.0.1 编译薄 Rust DLL。SQLite 固定 modernc.org/sqlite 1.39.1。完整许可与上游版权见 [NOTICE](../NOTICE) 和 [licenses](../licenses/)。
 
 ## 已验证与待验收
+
+以下包含迁移阶段的历史验证记录。Python 应用清理后的默认 Go 测试不执行可选的原生采集、真实 OCR 或 Python 对照检查。
 
 - Go 测试覆盖聊天、身份、隔离、取消、三协议模拟服务、CLI 合成通信、记忆及备份。虚构旧库通过 Go/Python 双向读写和撤销对照。
 - 长文本相似度与 Python SequenceMatcher 高频字符规则完成 140 组固定随机样本对照。
